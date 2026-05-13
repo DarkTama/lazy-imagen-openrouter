@@ -1119,8 +1119,12 @@ body {
 }
 
 /* ===== Orchestrator Mode Section ===== */
+/* flex-shrink:0 is required: as a flex-column child of .sidebar, the default
+   flex-shrink:1 lets overflow:hidden collapse the <details> to 0 height.
+   Sized to content explicitly so the summary always shows. */
 .orchestrator-section {
     display: block;
+    flex-shrink: 0;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     padding: 0;
