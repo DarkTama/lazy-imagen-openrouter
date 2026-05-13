@@ -390,6 +390,7 @@ const elements = {
     orchestratorSection: document.getElementById('orchestratorSection'),
     orchestratorToggle: document.getElementById('orchestratorToggle'),
     orchestratorWorkspace: document.getElementById('orchestratorWorkspace'),
+    orchestratorAssembleBtn: document.getElementById('orchestratorAssembleBtn'),
     orchestratorGenerateBtn: document.getElementById('orchestratorGenerateBtn'),
     generationModelInfo: document.getElementById('generationModelInfo'),
     sourceDropzone: document.getElementById('sourceDropzone'),
@@ -598,7 +599,7 @@ function setupOrchestrator() {
 
     // Restore last assembled prompt preview
     if (o.lastAssembledPrompt) {
-        elements.assembledPromptPreview.textContent = o.lastAssembledPrompt;
+        elements.assembledPromptPreview.value = o.lastAssembledPrompt;
     }
 }
 
@@ -924,9 +925,22 @@ function setupOrchestratorEventListeners() {
         saveOrchestratorState();
     }, 250));
 
+    // Assemble button — runs vision + assemble only, fills the editable textarea.
+    if (elements.orchestratorAssembleBtn) {
+        elements.orchestratorAssembleBtn.addEventListener('click', assembleOrchestratorPrompt);
+    }
+
     // Generate button inside the workspace — reuses the same generation pipeline.
     if (elements.orchestratorGenerateBtn) {
         elements.orchestratorGenerateBtn.addEventListener('click', generateImages);
+    }
+
+    // Persist edits to the assembled-prompt textarea (it's the source of truth).
+    if (elements.assembledPromptPreview) {
+        elements.assembledPromptPreview.addEventListener('input', debounce(() => {
+            state.orchestrator.lastAssembledPrompt = elements.assembledPromptPreview.value;
+            saveOrchestratorState();
+        }, 300));
     }
 }
 
@@ -1391,6 +1405,139 @@ function assemblePrompt(v, p) {
     return parts.filter(s => s && s.trim()).join(' ');
 }
 
+// Loading state helpers for the two workspace footer buttons.
+function setAssembleButtonLoading(on) {
+    if (!elements.orchestratorAssembleBtn) return;
+    elements.orchestratorAssembleBtn.disabled = on;
+    elements.orchestratorAssembleBtn.classList.toggle('loading', on);
+    const label = elements.orchestratorAssembleBtn.querySelector('.ow-btn-label');
+    if (label) label.textContent = on ? 'Analyzing images…' : 'Assemble Prompt';
+}
+
+function setGenerateButtonLoading(on) {
+    if (!elements.orchestratorGenerateBtn) return;
+    elements.orchestratorGenerateBtn.disabled = on;
+    elements.orchestratorGenerateBtn.classList.toggle('loading', on);
+    const label = elements.orchestratorGenerateBtn.querySelector('.ow-btn-label');
+    if (label) label.textContent = on ? 'Generating…' : 'Generate Image →';
+}
+
+// Runs the vision call + assembles the prompt; fills the editable textarea.
+// Returns the assembled prompt string on success, or null on failure.
+// Does NOT trigger image generation.
+async function assembleOrchestratorPrompt() {
+    const o = state.orchestrator;
+    if (!state.apiKey) {
+        showToast('Save your OpenRouter API key first', 'error');
+        return null;
+    }
+    if (!o.sourceImage || !o.referenceImage) {
+        showToast('Upload both Source and Reference images before assembling', 'error');
+        return null;
+    }
+    const visionModel = (o.visionModelCustom && o.visionModelCustom.trim()) || o.visionModel;
+    setAssembleButtonLoading(true);
+    try {
+        const vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel);
+        const assembled = assemblePrompt(vision, o);
+        o.lastAssembledPrompt = assembled;
+        if (elements.assembledPromptPreview) {
+            elements.assembledPromptPreview.value = assembled;
+        }
+        saveOrchestratorState();
+        showToast('Prompt assembled. Review or edit, then click Generate Image.', 'success');
+        return assembled;
+    } catch (err) {
+        console.error('Assemble failed:', err);
+        showToast(`Assemble failed: ${err.message}`, 'error');
+        return null;
+    } finally {
+        setAssembleButtonLoading(false);
+    }
+}
+
+// Returns a plain-data copy of state.orchestrator for embedding in image metadata.
+// Drops fields that are runtime/UI-only.
+function snapshotOrchestrator() {
+    const o = state.orchestrator;
+    return {
+        sourceImage: o.sourceImage,
+        referenceImage: o.referenceImage,
+        transfers: { ...o.transfers },
+        artStyle: o.artStyle,
+        identityLock: o.identityLock,
+        creativity: o.creativity,
+        visionModel: o.visionModel,
+        visionModelCustom: o.visionModelCustom,
+        researchModel: o.researchModel,
+        subjectContext: o.subjectContext,
+        notes: o.notes,
+        lastAssembledPrompt: o.lastAssembledPrompt
+    };
+}
+
+// Restores an orchestrator snapshot from a saved image. Switches the app into
+// orchestrator mode and pushes every field to the DOM.
+function restoreOrchestratorFromSnapshot(snap) {
+    if (!snap) return;
+    Object.assign(state.orchestrator, {
+        ...ORCHESTRATOR_DEFAULTS,
+        ...snap,
+        transfers: { ...ORCHESTRATOR_DEFAULTS.transfers, ...(snap.transfers || {}) },
+        enabled: true
+    });
+
+    applyOrchestratorMode(true);
+    if (elements.orchestratorToggle) elements.orchestratorToggle.checked = true;
+
+    // Source / Reference thumbnails
+    if (snap.sourceImage) renderRoleThumb('source', snap.sourceImage); else clearRoleThumb('source');
+    if (snap.referenceImage) renderRoleThumb('reference', snap.referenceImage); else clearRoleThumb('reference');
+
+    // Transfer checkboxes
+    ATTRIBUTE_KEYS.forEach(attr => {
+        const cb = elements.owToggleGrid?.querySelector(`input[data-attr="${attr}"]`);
+        if (cb) cb.checked = !!snap.transfers?.[attr];
+    });
+
+    // Art style radio
+    const radio = document.querySelector(`input[name="artStyle"][value="${snap.artStyle || 'source'}"]`);
+    if (radio) radio.checked = true;
+
+    // Sliders
+    if (elements.identityLock) elements.identityLock.value = snap.identityLock || 'high';
+    const cr = snap.creativity ?? 25;
+    if (elements.creativitySlider) elements.creativitySlider.value = cr;
+    if (elements.creativityValue) elements.creativityValue.textContent = `${cr}%`;
+
+    // Models
+    if (elements.visionModelCustom) elements.visionModelCustom.value = snap.visionModelCustom || '';
+    const visionId = snap.visionModel || 'google/gemini-2.5-flash';
+    if (elements.visionModelOptions) {
+        elements.visionModelOptions.querySelectorAll('.custom-select-option').forEach(o => {
+            o.classList.toggle('selected', o.dataset.value === visionId);
+        });
+    }
+    if (elements.visionModelValue) {
+        elements.visionModelValue.textContent = (VISION_MODELS_BY_ID[visionId] || {}).name || visionId;
+    }
+    renderVisionModelChip();
+    if (elements.researchModelSelect) elements.researchModelSelect.value = snap.researchModel || 'perplexity/sonar';
+
+    // Context, notes, assembled prompt
+    if (elements.subjectContext) elements.subjectContext.value = snap.subjectContext || '';
+    if (elements.orchestratorNotes) elements.orchestratorNotes.value = snap.notes || '';
+    if (elements.assembledPromptPreview) elements.assembledPromptPreview.value = snap.lastAssembledPrompt || '';
+
+    // Open the Subject Context drawer if there's text to show
+    if (elements.owSubjectContextSection) {
+        elements.owSubjectContextSection.open = !!(snap.subjectContext || '').trim();
+    }
+
+    updateToggleDiffs();
+    saveOrchestratorState();
+}
+
 // ===== Model Metadata =====
 // Fetches pricing from OpenRouter's public /models endpoint and caches it for 24h
 // in sessionStorage. Failures are non-fatal — the info card just omits price rows.
@@ -1508,7 +1655,9 @@ async function generateImages() {
         return;
     }
 
-    // === Orchestrator pre-step: run vision analysis + assemble prompt ===
+    // === Orchestrator pre-step ===
+    // Source-of-truth for the prompt is the editable textarea. If it's empty,
+    // auto-run Assemble first; otherwise use what's there verbatim.
     if (state.orchestrator.enabled) {
         const o = state.orchestrator;
         if (!o.sourceImage || !o.referenceImage) {
@@ -1521,35 +1670,32 @@ async function generateImages() {
             return;
         }
 
-        const visionModel = (o.visionModelCustom && o.visionModelCustom.trim()) || o.visionModel;
-        try {
-            elements.generateBtn.disabled = true;
-            elements.generateBtn.textContent = 'Analyzing images…';
-
-            const vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel);
-            const assembled = assemblePrompt(vision, o);
-            o.lastAssembledPrompt = assembled;
-            saveOrchestratorState();
-
-            elements.promptInput.value = assembled;
-            elements.charCount.textContent = `${assembled.length} chars`;
-            const preview = document.getElementById('assembledPromptPreview');
-            if (preview) preview.textContent = assembled;
-
-            // Inject Source + Reference as the references for the generation call.
-            state.references = [o.sourceImage, o.referenceImage];
-            renderReferenceSlots();
-        } catch (err) {
-            console.error('Vision analysis failed:', err);
-            showToast(`Vision analysis failed: ${err.message}. Using textarea prompt as fallback.`, 'warning');
-            // Fall through to existing flow with whatever's in the textarea.
-        } finally {
-            elements.generateBtn.disabled = false;
-            elements.generateBtn.textContent = 'Generate';
+        let prompt = (elements.assembledPromptPreview?.value || '').trim();
+        if (!prompt) {
+            // Auto-assemble if the textarea is empty.
+            setGenerateButtonLoading(true);
+            try {
+                prompt = await assembleOrchestratorPrompt();
+            } finally {
+                setGenerateButtonLoading(false);
+            }
+            if (!prompt) return; // assembleOrchestratorPrompt already toasted
         }
+
+        // Sync the textarea + manual textarea so downstream flow reads same value.
+        elements.assembledPromptPreview.value = prompt;
+        elements.promptInput.value = prompt;
+        elements.charCount.textContent = `${prompt.length} chars`;
+
+        // Inject Source + Reference into state.references for the generation call.
+        state.references = [o.sourceImage, o.referenceImage];
+        renderReferenceSlots();
     }
 
-    const prompt = elements.promptInput.value.trim();
+    // Read the prompt — manual mode uses #promptInput, orchestrator wrote into both.
+    const prompt = state.orchestrator.enabled
+        ? (elements.assembledPromptPreview?.value || '').trim()
+        : elements.promptInput.value.trim();
 
     if (!prompt) {
         showToast('Please enter a prompt', 'warning');
@@ -1563,7 +1709,15 @@ async function generateImages() {
     const currentQuality = state.imageQuality;
     const currentAspectRatio = state.aspectRatio;
     const imageCount = state.imageCount;
-    
+
+    // Snapshot orchestrator mode + state at the start, so each image saved in
+    // this batch carries its mode/snapshot even if the user flips the toggle
+    // mid-generation.
+    const orchestratorActiveAtStart = state.orchestrator.enabled;
+    const orchestratorSnapshotAtStart = orchestratorActiveAtStart
+        ? snapshotOrchestrator()
+        : null;
+
     // Create a batch to track this generation request
     const batchId = Date.now() + Math.random();
     const batch = {
@@ -1597,6 +1751,8 @@ async function generateImages() {
                     quality: currentQuality,
                     aspectRatio: currentAspectRatio,
                     references: currentReferences,
+                    mode: orchestratorActiveAtStart ? 'orchestrator' : 'manual',
+                    orchestratorSnapshot: orchestratorSnapshotAtStart,
                     createdAt: new Date().toISOString()
                 };
                 state.images.unshift(imageData);
@@ -1620,6 +1776,7 @@ async function generateImages() {
     };
 
     // Start all generations in parallel, each will render when done
+    if (orchestratorActiveAtStart) setGenerateButtonLoading(true);
     const promises = [];
     for (let i = 0; i < imageCount; i++) {
         promises.push(generateAndDisplay(i));
@@ -1627,6 +1784,7 @@ async function generateImages() {
 
     // Wait for all to complete to update final UI state
     await Promise.allSettled(promises);
+    if (orchestratorActiveAtStart) setGenerateButtonLoading(false);
 
     // Remove this batch from pending
     const batchIndex = state.pendingBatches.findIndex(b => b.id === batchId);
@@ -1869,6 +2027,7 @@ function renderGallery() {
                     <span class="meta-tag">${escapeHtml(image.modelName || image.model)}</span>
                     <span class="meta-tag">${escapeHtml(image.quality || image.size)}</span>
                     <span class="meta-tag">${escapeHtml(image.aspectRatio)}</span>
+                    ${modeTagHtml(image)}
                 </div>
             </div>
         `;
@@ -2030,6 +2189,7 @@ function createImageCardElement(image, index) {
                 <span class="meta-tag">${escapeHtml(image.modelName || image.model)}</span>
                 <span class="meta-tag">${escapeHtml(image.quality || image.size)}</span>
                 <span class="meta-tag">${escapeHtml(image.aspectRatio)}</span>
+                ${modeTagHtml(image)}
             </div>
         </div>
     `;
@@ -2119,74 +2279,167 @@ function downloadImageByIndex(index) {
     showToast('Image downloaded', 'success');
 }
 
+// Small floating popover for picking a Source / Reference slot when in
+// orchestrator mode. Anchored to the clicked trigger element.
+function closeAnyRolePicker() {
+    document.querySelectorAll('.role-picker-popover').forEach(p => p.remove());
+}
+
+function showRolePickerPopover(triggerEl, imageUrl) {
+    closeAnyRolePicker();
+    const pop = document.createElement('div');
+    pop.className = 'role-picker-popover';
+    pop.innerHTML = `
+        <button type="button" data-role="source">Use as Source</button>
+        <button type="button" data-role="reference">Use as Reference</button>
+    `;
+
+    // Position relative to the trigger element, falling back to viewport center.
+    const r = (triggerEl && triggerEl.getBoundingClientRect)
+        ? triggerEl.getBoundingClientRect()
+        : { left: window.innerWidth / 2 - 90, bottom: window.innerHeight / 2 };
+    pop.style.top = `${r.bottom + window.scrollY + 6}px`;
+    pop.style.left = `${r.left + window.scrollX}px`;
+
+    document.body.appendChild(pop);
+
+    pop.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-role]');
+        if (!btn) return;
+        e.stopPropagation();
+        const role = btn.dataset.role;
+        if (role === 'source') {
+            state.orchestrator.sourceImage = imageUrl;
+        } else {
+            state.orchestrator.referenceImage = imageUrl;
+        }
+        renderRoleThumb(role, imageUrl);
+        updateToggleDiffs();
+        saveOrchestratorState();
+        showToast(`Image set as ${role === 'source' ? 'Source' : 'Reference'}`, 'success');
+        pop.remove();
+    });
+
+    // Close on outside click — defer to next tick so we don't capture the click that opened us.
+    setTimeout(() => {
+        const outside = (e) => {
+            if (!pop.contains(e.target)) {
+                pop.remove();
+                document.removeEventListener('click', outside);
+            }
+        };
+        document.addEventListener('click', outside);
+    }, 0);
+}
+
 function addImageAsReference(index) {
     const image = state.images[index];
     if (!image) return;
+
+    if (state.orchestrator.enabled) {
+        // Anchor the popover to the reference button on this card (if findable).
+        const card = elements.gallery.querySelector(`.image-card[data-image-id="${image.id}"]`);
+        const trigger = card?.querySelector('.image-card-reference');
+        showRolePickerPopover(trigger, sanitizeImageUrl(image.url));
+        return;
+    }
 
     state.references.push(image.url);
     renderReferenceSlots();
     showToast('Image added as reference', 'success');
 }
 
-function recreateImageByIndex(index) {
-    const image = state.images[index];
-    if (!image) return;
-
-    // Restore prompt
-    elements.promptInput.value = image.prompt;
-    elements.charCount.textContent = `${image.prompt.length} chars`;
-
-    // Restore model using custom select
+// Restore the generation-model side of the settings (model, size, aspect).
+// Common to both manual and orchestrator restore paths.
+function restoreGenerationSettings(image) {
     state.selectedModel = image.model;
     localStorage.setItem('imagen_model', state.selectedModel);
-    const modelOption = document.querySelector(`.custom-select-option[data-value="${image.model}"]`);
+    const modelOption = document.querySelector(`#modelSelectOptions .custom-select-option[data-value="${image.model}"]`);
     if (modelOption) {
-        document.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+        document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
         modelOption.classList.add('selected');
-        elements.modelSelectValue.textContent = modelOption.textContent;
+        const cfg = MODEL_CONFIGS[image.model];
+        elements.modelSelectValue.textContent = cfg?.name || image.model;
     }
     updateGeminiOptionsVisibility();
+    renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
 
-    // Restore quality/size
     document.querySelectorAll('.btn-toggle').forEach(btn => {
         btn.classList.remove('active');
         if (btn.dataset.quality === image.quality) {
             btn.classList.add('active');
+            state.imageSize = btn.dataset.size;
+            state.imageQuality = btn.dataset.quality;
         }
     });
 
-    // Restore aspect ratio
     document.querySelectorAll('.btn-aspect').forEach(btn => {
         btn.classList.remove('active');
         if (btn.dataset.ratio === image.aspectRatio) {
             btn.classList.add('active');
+            state.aspectRatio = image.aspectRatio;
         }
     });
+}
 
-    // Restore references
-    if (image.references && image.references.length > 0) {
-        state.references = [...image.references];
+function recreateFromImage(image) {
+    if (!image) return;
+
+    restoreGenerationSettings(image);
+
+    if (image.mode === 'orchestrator' && image.orchestratorSnapshot) {
+        // Switch to orchestrator mode and restore every field from the snapshot.
+        restoreOrchestratorFromSnapshot(image.orchestratorSnapshot);
+        showToast('Orchestrator settings restored. Review the prompt and click Generate Image.', 'success');
     } else {
-        state.references = [];
+        // Manual (or legacy image with no mode field) — turn orchestrator off
+        // and populate the manual prompt + references.
+        applyOrchestratorMode(false);
+        if (elements.orchestratorToggle) elements.orchestratorToggle.checked = false;
+        saveOrchestratorState();
+
+        elements.promptInput.value = image.prompt;
+        elements.charCount.textContent = `${image.prompt.length} chars`;
+        state.references = image.references?.length ? [...image.references] : [];
+        renderReferenceSlots();
+        showToast('Settings restored. Click Generate to recreate.', 'success');
     }
-    renderReferenceSlots();
 
-    showToast('Settings restored. Click Generate to recreate.', 'success');
-
-    // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function recreateImageByIndex(index) {
+    recreateFromImage(state.images[index]);
 }
 
 // ===== Modal =====
 function openModal(image) {
     state.currentImage = image;
     elements.modalImage.src = sanitizeImageUrl(image.url);
+
+    const isOrch = image.mode === 'orchestrator';
+    let orchRows = '';
+    if (isOrch && image.orchestratorSnapshot) {
+        const snap = image.orchestratorSnapshot;
+        const transferred = Object.entries(snap.transfers || {})
+            .filter(([, v]) => v)
+            .map(([k]) => ATTRIBUTE_LABELS[k] || k)
+            .join(', ') || '(none — all from Source)';
+        orchRows = `
+            <p><strong>Transferred:</strong> ${escapeHtml(transferred)}</p>
+            <p><strong>Art Style:</strong> ${escapeHtml(snap.artStyle || 'source')}</p>
+            <p><strong>Identity Lock:</strong> ${escapeHtml(snap.identityLock || 'high')}</p>
+        `;
+    }
+
     elements.modalMetadata.innerHTML = `
+        <p><strong>Mode:</strong> ${isOrch ? '🧩 Orchestrator' : '🖊️ Manual'}</p>
         <p><strong>Prompt:</strong> ${escapeHtml(image.prompt)}</p>
         <p><strong>Model:</strong> ${escapeHtml(image.modelName || image.model)}</p>
         <p><strong>Size/Quality:</strong> ${escapeHtml(image.quality || image.size)}</p>
         <p><strong>Aspect Ratio:</strong> ${escapeHtml(image.aspectRatio)}</p>
         <p><strong>Created:</strong> ${escapeHtml(new Date(image.createdAt).toLocaleString())}</p>
+        ${orchRows}
         ${image.references?.length > 0 ? `<p><strong>References Used:</strong> ${escapeHtml(image.references.length)}</p>` : ''}
     `;
     elements.imageModal.classList.add('active');
@@ -2200,6 +2453,11 @@ function closeModal() {
 function useImageAsReference() {
     if (!state.currentImage) return;
 
+    if (state.orchestrator.enabled) {
+        showRolePickerPopover(elements.useAsReference, sanitizeImageUrl(state.currentImage.url));
+        return;
+    }
+
     state.references.push(state.currentImage.url);
     renderReferenceSlots();
     closeModal();
@@ -2208,54 +2466,8 @@ function useImageAsReference() {
 
 function recreateImage() {
     if (!state.currentImage) return;
-
-    // Restore prompt
-    elements.promptInput.value = state.currentImage.prompt;
-    elements.charCount.textContent = `${state.currentImage.prompt.length} chars`;
-
-    // Restore model using custom select
-    state.selectedModel = state.currentImage.model;
-    localStorage.setItem('imagen_model', state.selectedModel);
-    const modelOption = document.querySelector(`.custom-select-option[data-value="${state.currentImage.model}"]`);
-    if (modelOption) {
-        document.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
-        modelOption.classList.add('selected');
-        elements.modelSelectValue.textContent = modelOption.textContent;
-    }
-    updateGeminiOptionsVisibility();
-
-    // Restore quality/size
-    document.querySelectorAll('.btn-toggle').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.quality === state.currentImage.quality) {
-            btn.classList.add('active');
-            state.imageSize = btn.dataset.size;
-            state.imageQuality = btn.dataset.quality;
-        }
-    });
-
-    // Restore aspect ratio
-    document.querySelectorAll('.btn-aspect').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.ratio === state.currentImage.aspectRatio) {
-            btn.classList.add('active');
-            state.aspectRatio = state.currentImage.aspectRatio;
-        }
-    });
-
-    // Restore references (always update the UI, even if empty to clear previous refs)
-    if (state.currentImage.references && state.currentImage.references.length > 0) {
-        state.references = [...state.currentImage.references];
-    } else {
-        state.references = [];
-    }
-    renderReferenceSlots();
-
+    recreateFromImage(state.currentImage);
     closeModal();
-    showToast('Settings restored. Click Generate to recreate.', 'success');
-
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function downloadCurrentImage() {
@@ -2294,6 +2506,13 @@ function showToast(message, type = 'info') {
         toast.style.animation = 'slideIn 0.3s ease reverse';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
+}
+
+// Renders the small "mode" badge for an image card / modal.
+// Defaults to manual when image has no mode field (legacy images).
+function modeTagHtml(image) {
+    const isOrch = image?.mode === 'orchestrator';
+    return `<span class="meta-tag mode-tag ${isOrch ? 'mode-orchestrator' : 'mode-manual'}">${isOrch ? '🧩 Orchestrator' : '🖊️ Manual'}</span>`;
 }
 
 function escapeHtml(text) {
