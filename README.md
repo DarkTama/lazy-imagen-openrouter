@@ -1,11 +1,34 @@
-# Imagen - AI Image Generation Tool
+# lazy-imagen-openrouter
 
-A powerful client-side AI image generation tool using OpenRouter API. Generate thumbnails, artwork, and creative images with multiple state-of-the-art models.
+> The lazy developer's UI for OpenRouter. Upload two images, click a few checkboxes, and let the tool write the complex image-to-image prompts for you. It chains a vision model to automatically extract metadata from a Source and Reference image, allowing users to effortlessly transfer poses, clothing, and styles — all without typing a prose prompt.
+
+## 📖 Origin & Credits
+
+This project is a modified fork of the excellent [imagen-openrouter](https://github.com/yusufipk/imagen-openrouter) by yusufipk.
+
+As per the original project, this modified software remains open-source and is licensed under the **GPL-3.0 License**.
+
+---
+
+New users: jump to the [User Guide](docs/USER_GUIDE.md) for a walkthrough of both the manual prompt flow and Orchestrator Mode. Developers: see [Architecture](docs/ARCHITECTURE.md) and the [Model Reference](docs/MODELS.md).
 
 ![Imagen UI](assets/UI.webp)
 ![Imagen UI-1](assets/UI-1.webp)
 
 ## ✨ Features
+
+### 🧩 Orchestrator Mode (new)
+- **No-typing image-to-image** — upload a Source image (character) and a Reference image (style/pose/clothes), tick checkboxes for what to transfer, and let a vision model assemble the prompt automatically.
+- **9 transfer toggles** — Clothing, Pose/Body, Background, Facial Expression, Hair, Lighting, Color Palette, Accessories, Camera/Framing.
+- **3-way Art Style picker** — Source, Reference, or Blend.
+- **Identity Lock** — choose how strictly to preserve the Source character's face (Low → Maximum).
+- **Creativity slider** — 0–100, dials between "stay faithful" and "allow creative reinterpretation".
+- **Customizable Vision Analyst** — 10 curated picks (Gemini Flash/Pro, GPT-4o, Claude Sonnet, Qwen-VL, Llama Vision) plus a free-text custom model ID override.
+- **Subject Context with web research** — describe subjects the model doesn't know, or click 🔍 to auto-research via Perplexity Sonar.
+- **Read-only prompt preview** — see exactly what was sent to the generation model.
+
+### 📊 Model Info Cards
+Every model dropdown now shows pricing (live, from `/api/v1/models`), best-for descriptors, speed indicator, context window, and capability summary.
 
 ### 🎨 Multi-Model Support
 - **Gemini 2.5 Flash Image** - Google's fast image generation
@@ -91,11 +114,17 @@ This is a **100% client-side application**:
 ## 📁 Project Structure
 
 ```
-imagen/
-├── src/            # Source code (JS/CSS)
-├── assets/         # Images and design assets
-├── index.html      # Main entry point
-└── README.md       # Documentation
+lazy-imagen-openrouter/
+├── src/                       # Source code (app.js, styles.css)
+├── assets/                    # Screenshots
+├── docs/
+│   ├── USER_GUIDE.md          # Walkthrough for end users
+│   ├── ARCHITECTURE.md        # Developer reference
+│   ├── MODELS.md              # Long-form model reference
+│   └── ORCHESTRATOR_SPEC.md   # Original Gemini-generated design spec
+├── index.html                 # Main entry point
+├── favicon.svg
+└── README.md
 ```
 
 ## 📜 License

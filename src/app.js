@@ -87,6 +87,42 @@ const ImagenDB = {
 };
 
 // ===== State Management =====
+const ORCHESTRATOR_DEFAULTS = {
+    enabled: false,
+    sourceImage: null,       // base64 data URI
+    referenceImage: null,    // base64 data URI
+    transfers: {             // booleans, true => use Reference, false => use Source
+        clothing: false, pose: false, background: false,
+        expression: false, hair: false, lighting: false,
+        palette: false, accessories: false, camera: false
+    },
+    artStyle: 'source',      // 'source' | 'reference' | 'blend'
+    identityLock: 'high',    // 'low' | 'medium' | 'high' | 'max'
+    creativity: 25,          // 0-100
+    visionModel: 'google/gemini-2.5-flash',
+    visionModelCustom: '',   // overrides visionModel if non-empty
+    researchModel: 'perplexity/sonar',
+    subjectContext: '',
+    notes: '',
+    lastAssembledPrompt: ''
+};
+
+function loadOrchestratorState() {
+    try {
+        const raw = localStorage.getItem('imagen_orchestrator');
+        if (!raw) return { ...ORCHESTRATOR_DEFAULTS, transfers: { ...ORCHESTRATOR_DEFAULTS.transfers } };
+        const parsed = JSON.parse(raw);
+        return {
+            ...ORCHESTRATOR_DEFAULTS,
+            ...parsed,
+            transfers: { ...ORCHESTRATOR_DEFAULTS.transfers, ...(parsed.transfers || {}) }
+        };
+    } catch (e) {
+        console.warn('Failed to load orchestrator state:', e);
+        return { ...ORCHESTRATOR_DEFAULTS, transfers: { ...ORCHESTRATOR_DEFAULTS.transfers } };
+    }
+}
+
 const state = {
     apiKey: localStorage.getItem('imagen_api_key') || '',
     selectedModel: localStorage.getItem('imagen_model') || 'google/gemini-2.5-flash-image',
@@ -97,110 +133,209 @@ const state = {
     references: [], // Dynamic array - unlimited references
     images: [], // Will be loaded from IndexedDB
     currentImage: null,
-    pendingBatches: [] // Track pending generation batches { id, prompt, count, completed, failed }
+    pendingBatches: [], // Track pending generation batches { id, prompt, count, completed, failed }
+    modelPricing: {}, // { 'model/id': { prompt, completion, image, request } } — enriched from /api/v1/models
+    orchestrator: loadOrchestratorState()
 };
 
+function saveOrchestratorState() {
+    try {
+        localStorage.setItem('imagen_orchestrator', JSON.stringify(state.orchestrator));
+    } catch (e) {
+        // Most likely quota exceeded — base64 images can blow past localStorage's ~5MB limit.
+        console.warn('Failed to persist orchestrator state (quota?):', e);
+        showToast('Could not save orchestrator state — uploaded images may be too large for browser storage.', 'warning');
+    }
+}
+
 // ===== Model Configurations =====
+// `bestFor`, `speed` ('fast'|'med'|'slow'), and `notes` are surfaced in the model
+// info card. Pricing is enriched at runtime from /api/v1/models (see fetchModelPricing).
 const MODEL_CONFIGS = {
     'google/gemini-2.5-flash-image': {
         name: 'Gemini 2.5 Flash Image',
         supportsImageSize: true,
         supportsAspectRatio: true,
         supportsImageInput: true,
-        maxReferences: 3
+        maxReferences: 3,
+        bestFor: 'Recommended default — fast generation and edits',
+        speed: 'fast',
+        notes: 'Strong all-rounder. Supports image-to-image with up to 3 references.'
     },
     'google/gemini-2.5-flash-image-preview': {
         name: 'Gemini 2.5 Flash Image (Preview)',
         supportsImageSize: true,
         supportsAspectRatio: true,
         supportsImageInput: true,
-        maxReferences: 3
+        maxReferences: 3,
+        bestFor: 'Preview build of Gemini 2.5 Flash Image',
+        speed: 'fast',
+        notes: 'May be cheaper or differently rate-limited than the stable release.'
     },
     'google/gemini-3.1-flash-image-preview': {
         name: 'Gemini 3.1 Flash Image (Preview)',
         supportsImageSize: true,
         supportsAspectRatio: true,
         supportsImageInput: true,
-        maxReferences: 3
+        maxReferences: 3,
+        bestFor: 'Newer Flash generation — improved detail and consistency',
+        speed: 'fast',
+        notes: 'Preview model; behavior may change between releases.'
     },
     'google/gemini-3-pro-image-preview': {
         name: 'Gemini 3 Pro Image (Preview)',
         supportsImageSize: true,
         supportsAspectRatio: true,
         supportsImageInput: true,
-        maxReferences: 14
+        maxReferences: 14,
+        bestFor: 'Best for complex compositions with many references',
+        speed: 'med',
+        notes: 'Supports up to 14 reference images — ideal for character sheets, mood boards.'
     },
     'openai/gpt-5-image': {
         name: 'GPT-5 Image',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: true,
-        maxReferences: 1
+        maxReferences: 1,
+        bestFor: 'Best for prompt adherence and text rendering',
+        speed: 'med',
+        notes: 'OpenAI image model. Strong at following detailed instructions.'
     },
     'openai/gpt-5-image-mini': {
         name: 'GPT-5 Image Mini',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: true,
-        maxReferences: 1
+        maxReferences: 1,
+        bestFor: 'Cheaper OpenAI option for quick iterations',
+        speed: 'fast',
+        notes: 'Smaller variant of GPT-5 Image — lower cost, slightly reduced quality.'
     },
     'black-forest-labs/flux.2-pro': {
         name: 'Flux 2 Pro',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Photorealism and artistic flexibility',
+        speed: 'med',
+        notes: 'Text-to-image only. No reference image support.'
     },
     'black-forest-labs/flux.2-max': {
         name: 'Flux 2 Max',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Highest fidelity Flux output',
+        speed: 'slow',
+        notes: 'Premium Flux tier — best for hero shots. Text-to-image only.'
     },
     'black-forest-labs/flux.2-flex': {
         name: 'Flux 2 Flex',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Balanced quality vs cost in the Flux family',
+        speed: 'fast',
+        notes: 'Mid-tier Flux. Text-to-image only.'
     },
     'black-forest-labs/flux.2-klein-4b': {
         name: 'Flux 2 Klein 4B',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Cheapest Flux option, fastest turnaround',
+        speed: 'fast',
+        notes: 'Small 4B-parameter Flux variant. Good for drafts.'
     },
     'bytedance-seed/seedream-4.5': {
         name: 'Seedream 4.5',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Stylized illustration and anime aesthetics',
+        speed: 'med',
+        notes: 'ByteDance model. Strong on East Asian art styles. Text-to-image only.'
     },
     'sourceful/riverflow-v2-fast-preview': {
         name: 'Riverflow V2 Fast',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Quick exploratory generations',
+        speed: 'fast',
+        notes: 'Fast tier of Riverflow V2. Text-to-image only.'
     },
     'sourceful/riverflow-v2-standard-preview': {
         name: 'Riverflow V2 Standard',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Balanced quality and speed',
+        speed: 'med',
+        notes: 'Standard tier of Riverflow V2. Text-to-image only.'
     },
     'sourceful/riverflow-v2-max-preview': {
         name: 'Riverflow V2 Max',
         supportsImageSize: false,
         supportsAspectRatio: true,
         supportsImageInput: false,
-        maxReferences: 0
+        maxReferences: 0,
+        bestFor: 'Highest quality Riverflow output',
+        speed: 'slow',
+        notes: 'Max tier of Riverflow V2. Text-to-image only.'
     }
 };
+
+// ===== Vision-capable models for the analyst step =====
+// Used by Orchestrator Mode to extract structured metadata from Source + Reference images.
+const VISION_MODELS = [
+    { id: 'google/gemini-2.5-flash',                  name: 'Gemini 2.5 Flash',
+      bestFor: 'Recommended — fast, cheap, accurate JSON', speed: 'fast', context: '1M tokens' },
+    { id: 'google/gemini-2.0-flash-001',              name: 'Gemini 2.0 Flash',
+      bestFor: 'Cheapest option',                          speed: 'fast', context: '1M tokens' },
+    { id: 'google/gemini-2.5-pro',                    name: 'Gemini 2.5 Pro',
+      bestFor: 'Highest detail extraction, slower',        speed: 'slow', context: '2M tokens' },
+    { id: 'openai/gpt-4o-mini',                       name: 'GPT-4o Mini',
+      bestFor: 'Fast OpenAI option, strong JSON adherence', speed: 'fast', context: '128K tokens' },
+    { id: 'openai/gpt-4o',                            name: 'GPT-4o',
+      bestFor: 'Best for nuanced scene description',       speed: 'med',  context: '128K tokens' },
+    { id: 'openai/gpt-4.1-mini',                      name: 'GPT-4.1 Mini',
+      bestFor: 'Newest small OpenAI vision model',         speed: 'fast', context: '1M tokens' },
+    { id: 'anthropic/claude-3.5-sonnet',              name: 'Claude 3.5 Sonnet',
+      bestFor: 'Excellent visual reasoning',               speed: 'med',  context: '200K tokens' },
+    { id: 'anthropic/claude-sonnet-4',                name: 'Claude Sonnet 4',
+      bestFor: 'Best for subtle style + composition',      speed: 'med',  context: '200K tokens' },
+    { id: 'qwen/qwen2.5-vl-72b-instruct',             name: 'Qwen2.5-VL 72B',
+      bestFor: 'Open-weights, strong on anime/art',        speed: 'med',  context: '32K tokens' },
+    { id: 'meta-llama/llama-3.2-90b-vision-instruct', name: 'Llama 3.2 90B Vision',
+      bestFor: 'Open-weights, general purpose',            speed: 'med',  context: '128K tokens' },
+];
+
+// Lookup helper for vision models by id.
+const VISION_MODELS_BY_ID = VISION_MODELS.reduce((acc, m) => { acc[m.id] = m; return acc; }, {});
+
+// ===== Web-research models =====
+// Used by the optional "Research subject" button in Orchestrator Mode.
+const RESEARCH_MODELS = [
+    { id: 'perplexity/sonar',           name: 'Perplexity Sonar',           bestFor: 'Fast web research, cheap' },
+    { id: 'perplexity/sonar-pro',       name: 'Perplexity Sonar Pro',       bestFor: 'Deeper research, more sources' },
+    { id: 'perplexity/sonar-reasoning', name: 'Perplexity Sonar Reasoning', bestFor: 'Complex/obscure subjects' },
+];
+
+// ===== Transformation attribute keys =====
+// Each attribute has a corresponding `source_<key>` and `ref_<key>` field in the vision JSON.
+const ATTRIBUTE_KEYS = [
+    'clothing', 'pose', 'background', 'expression',
+    'hair', 'lighting', 'palette', 'accessories', 'camera'
+];
 
 // ===== DOM Elements =====
 const elements = {
@@ -234,7 +369,34 @@ const elements = {
     modalMetadata: document.getElementById('modalMetadata'),
     useAsReference: document.getElementById('useAsReference'),
     recreateImage: document.getElementById('recreateImage'),
-    downloadImage: document.getElementById('downloadImage')
+    downloadImage: document.getElementById('downloadImage'),
+
+    // Orchestrator
+    orchestratorSection: document.getElementById('orchestratorSection'),
+    orchestratorToggle: document.getElementById('orchestratorToggle'),
+    generationModelInfo: document.getElementById('generationModelInfo'),
+    sourceDropzone: document.getElementById('sourceDropzone'),
+    sourceInput: document.getElementById('sourceInput'),
+    sourceThumb: document.getElementById('sourceThumb'),
+    sourceClear: document.getElementById('sourceClear'),
+    referenceDropzone: document.getElementById('referenceDropzone'),
+    referenceInput: document.getElementById('referenceInput'),
+    referenceThumb: document.getElementById('referenceThumb'),
+    referenceClear: document.getElementById('referenceClear'),
+    identityLock: document.getElementById('identityLock'),
+    creativitySlider: document.getElementById('creativitySlider'),
+    creativityValue: document.getElementById('creativityValue'),
+    visionModelContainer: document.getElementById('visionModelContainer'),
+    visionModelTrigger: document.getElementById('visionModelTrigger'),
+    visionModelValue: document.getElementById('visionModelValue'),
+    visionModelOptions: document.getElementById('visionModelOptions'),
+    visionModelCustom: document.getElementById('visionModelCustom'),
+    visionModelInfo: document.getElementById('visionModelInfo'),
+    subjectContext: document.getElementById('subjectContext'),
+    researchSubjectBtn: document.getElementById('researchSubjectBtn'),
+    researchModelSelect: document.getElementById('researchModelSelect'),
+    orchestratorNotes: document.getElementById('orchestratorNotes'),
+    assembledPromptPreview: document.getElementById('assembledPromptPreview')
 };
 
 // ===== Initialization =====
@@ -247,13 +409,15 @@ async function init() {
     // Render reference slots
     renderReferenceSlots();
 
-    // Restore saved model selection
+    // Restore saved model selection — only after we've extended each option with a "best for" subtitle
+    enhanceGenerationModelDropdown();
     if (state.selectedModel) {
-        const savedOption = document.querySelector(`.custom-select-option[data-value="${state.selectedModel}"]`);
+        const savedOption = document.querySelector(`#modelSelectOptions .custom-select-option[data-value="${state.selectedModel}"]`);
         if (savedOption) {
-            document.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+            document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
             savedOption.classList.add('selected');
-            elements.modelSelectValue.textContent = savedOption.textContent;
+            const cfg = MODEL_CONFIGS[state.selectedModel];
+            elements.modelSelectValue.textContent = cfg?.name || savedOption.dataset.value;
         }
     }
 
@@ -278,6 +442,9 @@ async function init() {
         elements.imageCount.value = state.imageCount;
     }
 
+    // Set up orchestrator UI (must run before setupEventListeners since it populates dropdowns)
+    setupOrchestrator();
+
     // Load images from IndexedDB
     try {
         state.images = await ImagenDB.getAllImages();
@@ -294,6 +461,345 @@ async function init() {
 
     // Initialize UI state
     updateGeminiOptionsVisibility();
+
+    // Render initial model info cards (works even without pricing)
+    renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+    const visionId = state.orchestrator.visionModelCustom?.trim() || state.orchestrator.visionModel;
+    renderModelInfoCard(visionId, elements.visionModelInfo, VISION_MODELS_BY_ID[visionId]);
+
+    // Fetch pricing in the background; re-render cards when it arrives.
+    fetchModelPricing().then(() => {
+        renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+        const vid = state.orchestrator.visionModelCustom?.trim() || state.orchestrator.visionModel;
+        renderModelInfoCard(vid, elements.visionModelInfo, VISION_MODELS_BY_ID[vid]);
+    });
+}
+
+// Adds a "best for" subtitle line to each option in the existing generation model dropdown,
+// turning it into a rich (two-line) dropdown without rewriting all the markup.
+function enhanceGenerationModelDropdown() {
+    const container = elements.modelSelectContainer;
+    if (!container) return;
+    container.classList.add('rich');
+
+    container.querySelectorAll('.custom-select-option').forEach(opt => {
+        const id = opt.dataset.value;
+        const cfg = MODEL_CONFIGS[id];
+        if (!cfg || opt.querySelector('.option-bestfor')) return;
+        const labelText = (cfg.name || opt.textContent).trim();
+        opt.textContent = '';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'option-name';
+        nameSpan.textContent = labelText;
+        opt.appendChild(nameSpan);
+        if (cfg.bestFor) {
+            const sub = document.createElement('span');
+            sub.className = 'option-bestfor';
+            sub.textContent = cfg.bestFor;
+            opt.appendChild(sub);
+        }
+    });
+}
+
+// ===== Orchestrator setup =====
+function setupOrchestrator() {
+    const o = state.orchestrator;
+
+    // Populate vision model dropdown
+    elements.visionModelOptions.innerHTML = '';
+    VISION_MODELS.forEach(m => {
+        const opt = document.createElement('div');
+        opt.className = 'custom-select-option';
+        opt.dataset.value = m.id;
+        if (m.id === o.visionModel) opt.classList.add('selected');
+        const name = document.createElement('span');
+        name.className = 'option-name';
+        name.textContent = m.name;
+        opt.appendChild(name);
+        const sub = document.createElement('span');
+        sub.className = 'option-bestfor';
+        sub.textContent = m.bestFor;
+        opt.appendChild(sub);
+        elements.visionModelOptions.appendChild(opt);
+    });
+    const currentVision = VISION_MODELS_BY_ID[o.visionModel] || VISION_MODELS[0];
+    elements.visionModelValue.textContent = currentVision.name;
+
+    // Populate research model dropdown
+    elements.researchModelSelect.innerHTML = '';
+    RESEARCH_MODELS.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `${m.name} — ${m.bestFor}`;
+        if (m.id === o.researchModel) opt.selected = true;
+        elements.researchModelSelect.appendChild(opt);
+    });
+
+    // Restore enabled state
+    elements.orchestratorToggle.checked = o.enabled;
+    if (o.enabled) {
+        elements.orchestratorSection.open = true;
+        document.body.classList.add('orchestrator-active');
+        elements.promptInput.readOnly = true;
+    }
+
+    // Restore image thumbnails
+    if (o.sourceImage) renderRoleThumb('source', o.sourceImage);
+    if (o.referenceImage) renderRoleThumb('reference', o.referenceImage);
+
+    // Restore transfer checkboxes
+    Object.entries(o.transfers).forEach(([attr, checked]) => {
+        const cb = document.querySelector(`.toggle-row input[data-attr="${attr}"]`);
+        if (cb) cb.checked = !!checked;
+    });
+
+    // Restore art style radio
+    const radio = document.querySelector(`input[name="artStyle"][value="${o.artStyle}"]`);
+    if (radio) radio.checked = true;
+
+    // Restore identity lock + creativity
+    elements.identityLock.value = o.identityLock;
+    elements.creativitySlider.value = o.creativity;
+    elements.creativityValue.textContent = `${o.creativity}%`;
+
+    // Restore custom vision model + subject + notes
+    elements.visionModelCustom.value = o.visionModelCustom || '';
+    elements.subjectContext.value = o.subjectContext || '';
+    elements.orchestratorNotes.value = o.notes || '';
+    elements.researchSubjectBtn.disabled = !(o.subjectContext || '').trim();
+    if (o.subjectContext) elements.researchSubjectBtn.title = 'Research this subject via web search';
+
+    // Restore last assembled prompt preview
+    if (o.lastAssembledPrompt) {
+        elements.assembledPromptPreview.textContent = o.lastAssembledPrompt;
+    }
+}
+
+function renderRoleThumb(role, dataUri) {
+    const thumb = role === 'source' ? elements.sourceThumb : elements.referenceThumb;
+    const clear = role === 'source' ? elements.sourceClear : elements.referenceClear;
+    const zone = role === 'source' ? elements.sourceDropzone : elements.referenceDropzone;
+    thumb.src = dataUri;
+    thumb.hidden = false;
+    clear.hidden = false;
+    zone.classList.add('filled');
+}
+
+function clearRoleThumb(role) {
+    const thumb = role === 'source' ? elements.sourceThumb : elements.referenceThumb;
+    const clear = role === 'source' ? elements.sourceClear : elements.referenceClear;
+    const zone = role === 'source' ? elements.sourceDropzone : elements.referenceDropzone;
+    thumb.src = '';
+    thumb.hidden = true;
+    clear.hidden = true;
+    zone.classList.remove('filled');
+    if (role === 'source') {
+        state.orchestrator.sourceImage = null;
+        elements.sourceInput.value = '';
+    } else {
+        state.orchestrator.referenceImage = null;
+        elements.referenceInput.value = '';
+    }
+    saveOrchestratorState();
+}
+
+function readFileAsDataURI(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function setRoleImage(role, file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const dataUri = await readFileAsDataURI(file);
+    if (role === 'source') {
+        state.orchestrator.sourceImage = dataUri;
+    } else {
+        state.orchestrator.referenceImage = dataUri;
+    }
+    renderRoleThumb(role, dataUri);
+    saveOrchestratorState();
+}
+
+function setupRoleDropzone(role) {
+    const zone = role === 'source' ? elements.sourceDropzone : elements.referenceDropzone;
+    const input = role === 'source' ? elements.sourceInput : elements.referenceInput;
+    const clear = role === 'source' ? elements.sourceClear : elements.referenceClear;
+
+    input.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) setRoleImage(role, file);
+    });
+
+    clear.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearRoleThumb(role);
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+        zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('drag-over');
+        });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('drag-over');
+        });
+    });
+    zone.addEventListener('drop', (e) => {
+        const file = e.dataTransfer?.files?.[0];
+        if (file) setRoleImage(role, file);
+    });
+}
+
+// Simple debounce — for input fields that persist state.
+function debounce(fn, ms = 300) {
+    let t;
+    return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+    };
+}
+
+function setupOrchestratorEventListeners() {
+    const o = state.orchestrator;
+
+    // Enable/disable toggle
+    elements.orchestratorToggle.addEventListener('change', () => {
+        o.enabled = elements.orchestratorToggle.checked;
+        document.body.classList.toggle('orchestrator-active', o.enabled);
+        elements.promptInput.readOnly = o.enabled;
+        if (o.enabled) elements.orchestratorSection.open = true;
+        saveOrchestratorState();
+    });
+
+    // Role dropzones
+    setupRoleDropzone('source');
+    setupRoleDropzone('reference');
+
+    // Transfer checkboxes
+    document.querySelectorAll('.toggle-row input[data-attr]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            o.transfers[cb.dataset.attr] = cb.checked;
+            saveOrchestratorState();
+        });
+    });
+
+    // Art style radios
+    document.querySelectorAll('input[name="artStyle"]').forEach(r => {
+        r.addEventListener('change', () => {
+            if (r.checked) {
+                o.artStyle = r.value;
+                saveOrchestratorState();
+            }
+        });
+    });
+
+    // Identity lock
+    elements.identityLock.addEventListener('change', () => {
+        o.identityLock = elements.identityLock.value;
+        saveOrchestratorState();
+    });
+
+    // Creativity slider
+    elements.creativitySlider.addEventListener('input', () => {
+        o.creativity = parseInt(elements.creativitySlider.value, 10);
+        elements.creativityValue.textContent = `${o.creativity}%`;
+    });
+    elements.creativitySlider.addEventListener('change', saveOrchestratorState);
+
+    // Vision model dropdown
+    elements.visionModelTrigger.addEventListener('click', () => {
+        elements.visionModelContainer.classList.toggle('open');
+    });
+    elements.visionModelOptions.addEventListener('click', (e) => {
+        const opt = e.target.closest('.custom-select-option');
+        if (!opt) return;
+        const id = opt.dataset.value;
+        o.visionModel = id;
+        elements.visionModelOptions.querySelectorAll('.custom-select-option').forEach(o2 => o2.classList.remove('selected'));
+        opt.classList.add('selected');
+        const meta = VISION_MODELS_BY_ID[id];
+        elements.visionModelValue.textContent = meta?.name || id;
+        elements.visionModelContainer.classList.remove('open');
+        const effectiveId = o.visionModelCustom?.trim() || id;
+        renderModelInfoCard(effectiveId, elements.visionModelInfo, VISION_MODELS_BY_ID[effectiveId]);
+        saveOrchestratorState();
+    });
+    document.addEventListener('click', (e) => {
+        if (!elements.visionModelContainer.contains(e.target)) {
+            elements.visionModelContainer.classList.remove('open');
+        }
+    });
+
+    // Custom vision model ID
+    elements.visionModelCustom.addEventListener('input', debounce(() => {
+        o.visionModelCustom = elements.visionModelCustom.value;
+        const effectiveId = o.visionModelCustom.trim() || o.visionModel;
+        renderModelInfoCard(effectiveId, elements.visionModelInfo, VISION_MODELS_BY_ID[effectiveId]);
+        saveOrchestratorState();
+    }, 250));
+
+    // Subject context
+    elements.subjectContext.addEventListener('input', debounce(() => {
+        o.subjectContext = elements.subjectContext.value;
+        const hasText = !!o.subjectContext.trim();
+        elements.researchSubjectBtn.disabled = !hasText;
+        elements.researchSubjectBtn.title = hasText
+            ? 'Research this subject via web search'
+            : 'Type a subject name first';
+        saveOrchestratorState();
+    }, 250));
+
+    // Research model
+    elements.researchModelSelect.addEventListener('change', () => {
+        o.researchModel = elements.researchModelSelect.value;
+        saveOrchestratorState();
+    });
+
+    // Research button
+    elements.researchSubjectBtn.addEventListener('click', async () => {
+        if (!state.apiKey) {
+            showToast('Save your OpenRouter API key first', 'error');
+            return;
+        }
+        const current = elements.subjectContext.value.trim();
+        if (!current) return;
+
+        if (current.length > 80 && !confirm('Replace existing subject context with web research result?')) {
+            return;
+        }
+
+        elements.researchSubjectBtn.classList.add('loading');
+        elements.researchSubjectBtn.disabled = true;
+        try {
+            const result = await researchSubject(current, o.researchModel);
+            o.subjectContext = result;
+            elements.subjectContext.value = result;
+            saveOrchestratorState();
+            showToast('Subject research complete', 'success');
+        } catch (err) {
+            console.error('Research failed:', err);
+            showToast(`Research failed: ${err.message}`, 'error');
+        } finally {
+            elements.researchSubjectBtn.classList.remove('loading');
+            elements.researchSubjectBtn.disabled = false;
+        }
+    });
+
+    // Notes
+    elements.orchestratorNotes.addEventListener('input', debounce(() => {
+        o.notes = elements.orchestratorNotes.value;
+        saveOrchestratorState();
+    }, 250));
 }
 
 // ===== Event Listeners =====
@@ -303,16 +809,18 @@ function setupEventListeners() {
         elements.modelSelectContainer.classList.toggle('open');
     });
 
-    // Custom dropdown - option selection
-    document.querySelectorAll('.custom-select-option').forEach(option => {
+    // Custom dropdown - option selection (generation model only — vision dropdown wired in setupOrchestratorEventListeners)
+    document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(option => {
         option.addEventListener('click', () => {
             state.selectedModel = option.dataset.value;
             localStorage.setItem('imagen_model', state.selectedModel);
-            elements.modelSelectValue.textContent = option.textContent;
-            document.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+            const cfg = MODEL_CONFIGS[state.selectedModel];
+            elements.modelSelectValue.textContent = cfg?.name || option.dataset.value;
+            document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
             option.classList.add('selected');
             elements.modelSelectContainer.classList.remove('open');
             updateGeminiOptionsVisibility();
+            renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
         });
     });
 
@@ -427,6 +935,9 @@ function setupEventListeners() {
 
     // Paste images from clipboard
     document.addEventListener('paste', handlePaste);
+
+    // Orchestrator Mode listeners
+    setupOrchestratorEventListeners();
 
     // Warn user before leaving if there are pending generations
     window.addEventListener('beforeunload', (e) => {
@@ -599,17 +1110,321 @@ function clearAllReferences() {
     showToast('References cleared', 'success');
 }
 
+// ===== Orchestrator Mode =====
+// Vision-driven prompt composition: extracts structured metadata from a Source + Reference
+// image pair, then assembles a final prompt based on user toggle selections.
+
+const VISION_SYSTEM_PROMPT = `You analyze two images for a prompt-composition pipeline. Image 1 is the SOURCE (character to preserve). Image 2 is the REFERENCE (style/pose/clothes donor).
+
+Return ONLY a JSON object with these keys (strings, concise — 1 sentence each, no markdown):
+  source_char        — physical features of the character in Image 1
+  source_clothes     — what they're wearing in Image 1
+  source_pose        — pose / body language in Image 1
+  source_bg          — background of Image 1
+  source_style       — art style of Image 1
+  source_expression  — facial expression in Image 1
+  source_hair        — hair style + color in Image 1
+  source_lighting    — lighting in Image 1
+  source_palette     — color palette of Image 1
+  source_accessories — accessories visible in Image 1
+  source_camera      — camera framing / angle / shot type of Image 1
+  ref_clothes        — what's worn in Image 2
+  ref_pose           — pose in Image 2
+  ref_bg             — background of Image 2
+  ref_style          — art style of Image 2
+  ref_expression     — facial expression in Image 2
+  ref_hair           — hair in Image 2
+  ref_lighting       — lighting in Image 2
+  ref_palette        — color palette of Image 2
+  ref_accessories    — accessories in Image 2
+  ref_camera         — camera framing of Image 2
+
+Output strictly valid JSON. No prose around it. No code fences.`;
+
+async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${state.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': window.location.origin,
+            'X-Title': 'Imagen Internal Tool'
+        },
+        body: JSON.stringify({
+            model: modelId,
+            messages: [
+                { role: 'system', content: VISION_SYSTEM_PROMPT },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'image_url', image_url: { url: sourceB64, detail: 'high' } },
+                        { type: 'image_url', image_url: { url: referenceB64, detail: 'high' } },
+                        { type: 'text', text: 'Analyze both images and return the JSON described in the system prompt.' }
+                    ]
+                }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `Vision API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content;
+    if (typeof raw !== 'string' || !raw.trim()) {
+        throw new Error('Vision model returned no text content.');
+    }
+
+    // Try direct parse first; otherwise extract the first {...} block.
+    try {
+        return JSON.parse(raw);
+    } catch (_) {
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) throw new Error('Vision response was not valid JSON.');
+        return JSON.parse(match[0]);
+    }
+}
+
+async function researchSubject(subjectText, modelId) {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${state.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': window.location.origin,
+            'X-Title': 'Imagen Internal Tool'
+        },
+        body: JSON.stringify({
+            model: modelId,
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are a research assistant for an image-generation prompt. The user wants to generate an image of the following subject. Briefly research and describe the subject's distinctive visual features in 3-6 sentences. Focus on: physical appearance, signature clothing/accessories, color scheme, and any visual motifs. Keep it factual and concise. No citations, no markdown headings — just plain prose.`
+                },
+                { role: 'user', content: `Subject: ${subjectText}` }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `Research API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (typeof text !== 'string' || !text.trim()) {
+        throw new Error('Research model returned no content.');
+    }
+    return text.trim();
+}
+
+// Pure function — composes the final prompt from vision JSON + user preferences.
+function assemblePrompt(v, p) {
+    const pick = (attr) => p.transfers[attr] ? v[`ref_${attr}`] : v[`source_${attr}`];
+
+    const style =
+        p.artStyle === 'source'    ? v.source_style :
+        p.artStyle === 'reference' ? v.ref_style :
+        /* blend */                  `${v.source_style}, blended with ${v.ref_style}`;
+
+    const lockClause = {
+        low:    'preserve general likeness of the character',
+        medium: "preserve the character's facial identity",
+        high:   'maintain strong facial consistency with Image 1',
+        max:    'maintain 100% facial identity from Image 1 — same eyes, nose, mouth, jawline, skin tone'
+    }[p.identityLock] || '';
+
+    const creativityClause = p.creativity > 60
+        ? 'allow creative reinterpretation of secondary details.'
+        : p.creativity < 20
+            ? 'stay faithful to the source composition.'
+            : '';
+
+    const parts = [
+        p.subjectContext ? `Subject context: ${p.subjectContext}.` : '',
+        `${style} of ${v.source_char},`,
+        `wearing ${pick('clothing')},`,
+        `${pick('pose')},`,
+        `${pick('expression')} expression,`,
+        `with ${pick('hair')},`,
+        `${pick('accessories')},`,
+        `in ${pick('background')},`,
+        `${pick('lighting')} lighting,`,
+        `${pick('palette')} color palette,`,
+        `${pick('camera')} framing.`,
+        lockClause ? lockClause + '.' : '',
+        creativityClause,
+        p.notes ? `Additional notes: ${p.notes}` : ''
+    ];
+
+    return parts.filter(s => s && s.trim()).join(' ');
+}
+
+// ===== Model Metadata =====
+// Fetches pricing from OpenRouter's public /models endpoint and caches it for 24h
+// in sessionStorage. Failures are non-fatal — the info card just omits price rows.
+const MODEL_PRICING_CACHE_KEY = 'imagen_model_pricing';
+const MODEL_PRICING_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function fetchModelPricing() {
+    // Try cache first.
+    try {
+        const cached = sessionStorage.getItem(MODEL_PRICING_CACHE_KEY);
+        if (cached) {
+            const { pricing, ts } = JSON.parse(cached);
+            if (Date.now() - ts < MODEL_PRICING_TTL_MS) {
+                state.modelPricing = pricing;
+                return pricing;
+            }
+        }
+    } catch (e) {
+        console.warn('Pricing cache read failed:', e);
+    }
+
+    try {
+        const response = await fetch('https://openrouter.ai/api/v1/models');
+        if (!response.ok) throw new Error(`/models returned ${response.status}`);
+        const json = await response.json();
+        const list = Array.isArray(json.data) ? json.data : [];
+        const pricing = {};
+        for (const m of list) {
+            if (!m.id || !m.pricing) continue;
+            const p = m.pricing;
+            pricing[m.id] = {
+                prompt: parseFloat(p.prompt) || 0,
+                completion: parseFloat(p.completion) || 0,
+                image: parseFloat(p.image) || 0,
+                request: parseFloat(p.request) || 0
+            };
+        }
+        state.modelPricing = pricing;
+        try {
+            sessionStorage.setItem(MODEL_PRICING_CACHE_KEY, JSON.stringify({ pricing, ts: Date.now() }));
+        } catch (e) {
+            console.warn('Pricing cache write failed:', e);
+        }
+        return pricing;
+    } catch (e) {
+        console.warn('Failed to fetch model pricing:', e);
+        state.modelPricing = {};
+        return {};
+    }
+}
+
+function speedGlyph(speed) {
+    if (speed === 'fast') return '⚡ fast';
+    if (speed === 'slow') return '🐢 slow';
+    return '◐ medium';
+}
+
+function formatPrice(perToken) {
+    // OpenRouter prices are in $ per token. Convert to per-1M for display.
+    if (!perToken || perToken <= 0) return null;
+    const perMillion = perToken * 1_000_000;
+    if (perMillion >= 1) return `$${perMillion.toFixed(2)}`;
+    return `$${perMillion.toFixed(3)}`;
+}
+
+// Renders a small info card under a model dropdown.
+// `meta` shape: { name, bestFor?, speed?, context?, notes?, supportsImageInput?, maxReferences? }
+function renderModelInfoCard(modelId, target, meta) {
+    if (!target) return;
+
+    if (!meta) {
+        target.innerHTML = `<div class="model-info-card-inner">
+            <div class="info-title">Custom model</div>
+            <div class="info-row">Info unavailable for custom IDs.</div>
+        </div>`;
+        return;
+    }
+
+    const pricing = state.modelPricing[modelId];
+    const priceLines = [];
+    if (pricing) {
+        const prompt = formatPrice(pricing.prompt);
+        const completion = formatPrice(pricing.completion);
+        const image = formatPrice(pricing.image);
+        if (prompt) priceLines.push(`${prompt} / 1M prompt tokens`);
+        if (completion) priceLines.push(`${completion} / 1M completion tokens`);
+        if (image) priceLines.push(`${formatPrice(pricing.image)} / image`);
+    }
+
+    const capParts = [];
+    if (meta.supportsImageInput !== undefined) {
+        capParts.push(meta.supportsImageInput ? 'Image input: yes' : 'Image input: no');
+    }
+    if (meta.maxReferences !== undefined && meta.maxReferences > 0) {
+        capParts.push(`max ${meta.maxReferences} reference${meta.maxReferences === 1 ? '' : 's'}`);
+    }
+
+    target.innerHTML = `<div class="model-info-card-inner">
+        <div class="info-title">${escapeHtml(meta.name || modelId)}</div>
+        ${meta.bestFor ? `<div class="info-row info-bestfor"><strong>Best for:</strong> ${escapeHtml(meta.bestFor)}</div>` : ''}
+        <div class="info-row info-stats">
+            ${meta.speed ? `<span>${escapeHtml(speedGlyph(meta.speed))}</span>` : ''}
+            ${meta.context ? `<span>Context: ${escapeHtml(meta.context)}</span>` : ''}
+        </div>
+        ${priceLines.length > 0 ? `<div class="info-row info-pricing">${priceLines.map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>` : ''}
+        ${capParts.length > 0 ? `<div class="info-row info-caps">${escapeHtml(capParts.join(' · '))}</div>` : ''}
+        ${meta.notes ? `<div class="info-row info-notes">${escapeHtml(meta.notes)}</div>` : ''}
+    </div>`;
+}
+
 // ===== Image Generation =====
 async function generateImages() {
+    if (!state.apiKey) {
+        showToast('Please enter your OpenRouter API key', 'error');
+        return;
+    }
+
+    // === Orchestrator pre-step: run vision analysis + assemble prompt ===
+    if (state.orchestrator.enabled) {
+        const o = state.orchestrator;
+        if (!o.sourceImage || !o.referenceImage) {
+            showToast('Upload both Source and Reference images before generating', 'error');
+            return;
+        }
+        const modelConfig = MODEL_CONFIGS[state.selectedModel];
+        if (!modelConfig?.supportsImageInput) {
+            showToast(`${modelConfig?.name || state.selectedModel} doesn't support image input. Pick a Gemini or GPT-5 Image model for Orchestrator Mode.`, 'error');
+            return;
+        }
+
+        const visionModel = (o.visionModelCustom && o.visionModelCustom.trim()) || o.visionModel;
+        try {
+            elements.generateBtn.disabled = true;
+            elements.generateBtn.textContent = 'Analyzing images…';
+
+            const vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel);
+            const assembled = assemblePrompt(vision, o);
+            o.lastAssembledPrompt = assembled;
+            saveOrchestratorState();
+
+            elements.promptInput.value = assembled;
+            elements.charCount.textContent = `${assembled.length} chars`;
+            const preview = document.getElementById('assembledPromptPreview');
+            if (preview) preview.textContent = assembled;
+
+            // Inject Source + Reference as the references for the generation call.
+            state.references = [o.sourceImage, o.referenceImage];
+            renderReferenceSlots();
+        } catch (err) {
+            console.error('Vision analysis failed:', err);
+            showToast(`Vision analysis failed: ${err.message}. Using textarea prompt as fallback.`, 'warning');
+            // Fall through to existing flow with whatever's in the textarea.
+        } finally {
+            elements.generateBtn.disabled = false;
+            elements.generateBtn.textContent = 'Generate';
+        }
+    }
+
     const prompt = elements.promptInput.value.trim();
 
     if (!prompt) {
         showToast('Please enter a prompt', 'warning');
-        return;
-    }
-
-    if (!state.apiKey) {
-        showToast('Please enter your OpenRouter API key', 'error');
         return;
     }
 
