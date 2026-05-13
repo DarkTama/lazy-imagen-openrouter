@@ -1118,67 +1118,38 @@ body {
     font-weight: 400;
 }
 
-/* ===== Orchestrator Mode Section ===== */
-/* flex-shrink:0 is required: as a flex-column child of .sidebar, the default
-   flex-shrink:1 lets overflow:hidden collapse the <details> to 0 height.
-   Sized to content explicitly so the summary always shows. */
-.orchestrator-section {
-    display: block;
-    flex-shrink: 0;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 0;
-    background: var(--bg-card);
-    overflow: hidden;
-}
-
-.orchestrator-section[open] {
-    background: var(--bg-secondary);
-    border-color: var(--text-muted);
-}
-
-.orchestrator-summary {
+/* ===== Sidebar: Orchestrator Toggle Row ===== */
+/* Simple toggle in the sidebar; the actual workspace lives in main content. */
+.orchestrator-toggle-row .toggle-switch-label {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    gap: 10px;
     cursor: pointer;
-    list-style: none;
-    user-select: none;
-    transition: background var(--transition-fast);
+    padding: 4px 0;
 }
 
-.orchestrator-summary::-webkit-details-marker {
-    display: none;
-}
-
-.orchestrator-summary:hover {
-    background: var(--bg-hover);
-}
-
-.orchestrator-summary-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.orchestrator-summary-title {
-    font-size: 0.95rem;
+.orchestrator-toggle-title {
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.orchestrator-summary-hint {
-    font-size: 0.7rem;
-    color: var(--text-muted);
+.orchestrator-toggle-row .hint {
+    margin-top: 6px;
 }
 
-.orchestrator-body {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    padding: 16px;
-    border-top: 1px solid var(--border-color);
+/* When orchestrator mode is active, hide the manual prompt area and the
+   sidebar's generic Reference Images section. */
+body.orchestrator-active .prompt-area,
+body.orchestrator-active .reference-section {
+    display: none !important;
+}
+
+body.orchestrator-active #orchestratorWorkspace {
+    display: flex !important;
 }
 
 /* iOS-style toggle switch */
@@ -1282,6 +1253,11 @@ body {
 
 .role-dropzone.filled .role-input {
     pointer-events: none;
+}
+
+/* Hidden when slot is filled so the "Drop or click" text doesn't overlay the image. */
+.role-dropzone.filled .role-empty {
+    display: none;
 }
 
 .role-empty {
@@ -1588,6 +1564,394 @@ body.orchestrator-active #promptInput {
 
 body.orchestrator-active #promptInput::after {
     content: 'Read-only (Orchestrator Mode is on)';
+}
+
+/* ===== Orchestrator Workspace (main content area) ===== */
+.orchestrator-workspace {
+    display: none;
+    flex-direction: column;
+    gap: 24px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.ow-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 16px;
+}
+
+.ow-header h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ow-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* Section heading style used across the workspace */
+.ow-section-heading {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 12px;
+}
+
+.ow-section {
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- 1. Slots row --- */
+.ow-slots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.ow-slot {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ow-slot-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ow-slot-hint {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+.ow-dropzone {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 240px;
+    max-width: 320px;
+}
+
+/* --- 2. Toggle grid --- */
+.ow-toggle-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.ow-toggle-cell {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 12px;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ow-toggle-cell:hover {
+    border-color: var(--text-muted);
+    background: var(--bg-hover);
+}
+
+.ow-toggle-cell.checked {
+    border-color: var(--accent-primary);
+    background: var(--bg-card);
+}
+
+.ow-toggle-cell-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.ow-toggle-cell input[type="checkbox"] {
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.ow-toggle-cell-source {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    margin-left: auto;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+.ow-toggle-cell.checked .ow-toggle-cell-source {
+    color: var(--accent-primary);
+}
+
+.ow-diff {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 26px;
+}
+
+.ow-diff-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--bg-card);
+    transition: opacity var(--transition-fast), border-color var(--transition-fast);
+    flex-shrink: 0;
+    position: relative;
+}
+
+.ow-diff-thumb.placeholder {
+    border: 2px dashed var(--border-color);
+}
+
+.ow-diff-thumb.dimmed {
+    opacity: 0.35;
+}
+
+.ow-diff-thumb.chosen {
+    border-color: var(--accent-primary);
+    opacity: 1;
+}
+
+.ow-diff-thumb-label {
+    position: absolute;
+    bottom: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ow-diff-arrow {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+/* --- 3. Style row --- */
+.ow-style-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 24px;
+    align-items: center;
+}
+
+.ow-style-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ow-style-group.ow-style-creativity {
+    min-width: 0;
+}
+
+.ow-style-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ow-style-label .slider-value {
+    color: var(--text-muted);
+    font-weight: 400;
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+}
+
+.ow-radios {
+    display: flex;
+    gap: 8px;
+}
+
+.ow-radios .radio-row {
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+}
+
+.ow-select {
+    min-width: 200px;
+}
+
+.ow-style-creativity input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent-primary);
+}
+
+/* --- 4 + 5. Details (collapsible) --- */
+.ow-details {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    flex-shrink: 0;
+}
+
+.ow-details[open] {
+    background: var(--bg-card);
+    border-color: var(--text-muted);
+}
+
+.ow-details-summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    user-select: none;
+    transition: background var(--transition-fast);
+}
+
+.ow-details-summary::-webkit-details-marker {
+    display: none;
+}
+
+.ow-details-summary:hover {
+    background: var(--bg-hover);
+}
+
+.ow-details-summary .ow-section-heading {
+    margin: 0;
+}
+
+.ow-details-chevron {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    transition: transform var(--transition-fast);
+}
+
+.ow-details[open] .ow-details-chevron {
+    transform: rotate(90deg);
+}
+
+.ow-details-body {
+    padding: 0 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ow-advanced-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ow-advanced-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* One-line vision model chip for the Advanced drawer */
+.ow-model-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    align-self: flex-start;
+}
+
+.ow-model-chip:empty {
+    display: none;
+}
+
+/* --- 6. Preview --- */
+.ow-preview-section pre {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* --- 7. Footer --- */
+.ow-footer {
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
+}
+
+.ow-generate-btn {
+    min-width: 180px;
+    font-size: 0.95rem;
+    padding: 12px 24px;
+}
+
+/* Responsive: 3-col → 2-col → 1-col for the toggle grid; stack slot row */
+@media (max-width: 1280px) {
+    .ow-toggle-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .ow-style-row {
+        grid-template-columns: 1fr 1fr;
+    }
+    .ow-style-creativity {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 768px) {
+    .ow-slots {
+        grid-template-columns: 1fr;
+    }
+    .ow-toggle-grid {
+        grid-template-columns: 1fr;
+    }
+    .ow-style-row {
+        grid-template-columns: 1fr;
+    }
+    .ow-style-creativity {
+        grid-column: auto;
+    }
 }
 
 /* ===== Responsive ===== */

@@ -104,7 +104,22 @@ const ORCHESTRATOR_DEFAULTS = {
     researchModel: 'perplexity/sonar',
     subjectContext: '',
     notes: '',
-    lastAssembledPrompt: ''
+    lastAssembledPrompt: '',
+    advancedOpen: false,         // <details> Advanced drawer state
+    subjectContextOpen: false    // <details> Subject Context drawer state
+};
+
+// Human-readable labels for each transfer attribute (used in the toggle grid).
+const ATTRIBUTE_LABELS = {
+    clothing: 'Clothing',
+    pose: 'Pose / Body',
+    background: 'Background',
+    expression: 'Facial Expression',
+    hair: 'Hair',
+    lighting: 'Lighting',
+    palette: 'Color Palette',
+    accessories: 'Accessories',
+    camera: 'Camera / Framing'
 };
 
 function loadOrchestratorState() {
@@ -374,6 +389,8 @@ const elements = {
     // Orchestrator
     orchestratorSection: document.getElementById('orchestratorSection'),
     orchestratorToggle: document.getElementById('orchestratorToggle'),
+    orchestratorWorkspace: document.getElementById('orchestratorWorkspace'),
+    orchestratorGenerateBtn: document.getElementById('orchestratorGenerateBtn'),
     generationModelInfo: document.getElementById('generationModelInfo'),
     sourceDropzone: document.getElementById('sourceDropzone'),
     sourceInput: document.getElementById('sourceInput'),
@@ -383,6 +400,7 @@ const elements = {
     referenceInput: document.getElementById('referenceInput'),
     referenceThumb: document.getElementById('referenceThumb'),
     referenceClear: document.getElementById('referenceClear'),
+    owToggleGrid: document.getElementById('owToggleGrid'),
     identityLock: document.getElementById('identityLock'),
     creativitySlider: document.getElementById('creativitySlider'),
     creativityValue: document.getElementById('creativityValue'),
@@ -391,7 +409,9 @@ const elements = {
     visionModelValue: document.getElementById('visionModelValue'),
     visionModelOptions: document.getElementById('visionModelOptions'),
     visionModelCustom: document.getElementById('visionModelCustom'),
-    visionModelInfo: document.getElementById('visionModelInfo'),
+    visionModelChip: document.getElementById('visionModelChip'),
+    owSubjectContextSection: document.getElementById('owSubjectContextSection'),
+    owAdvancedSection: document.getElementById('owAdvancedSection'),
     subjectContext: document.getElementById('subjectContext'),
     researchSubjectBtn: document.getElementById('researchSubjectBtn'),
     researchModelSelect: document.getElementById('researchModelSelect'),
@@ -462,16 +482,14 @@ async function init() {
     // Initialize UI state
     updateGeminiOptionsVisibility();
 
-    // Render initial model info cards (works even without pricing)
+    // Render initial generation model info card (sidebar). Vision model uses a compact chip
+    // rendered by setupOrchestrator() / renderVisionModelChip() instead of a full card.
     renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
-    const visionId = state.orchestrator.visionModelCustom?.trim() || state.orchestrator.visionModel;
-    renderModelInfoCard(visionId, elements.visionModelInfo, VISION_MODELS_BY_ID[visionId]);
 
-    // Fetch pricing in the background; re-render cards when it arrives.
+    // Fetch pricing in the background; re-render generation card and vision chip when it arrives.
     fetchModelPricing().then(() => {
         renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
-        const vid = state.orchestrator.visionModelCustom?.trim() || state.orchestrator.visionModel;
-        renderModelInfoCard(vid, elements.visionModelInfo, VISION_MODELS_BY_ID[vid]);
+        renderVisionModelChip();
     });
 }
 
@@ -505,6 +523,9 @@ function enhanceGenerationModelDropdown() {
 function setupOrchestrator() {
     const o = state.orchestrator;
 
+    // Render the 9-cell transfer toggle grid (with visual-diff thumbs per cell).
+    renderToggleGrid();
+
     // Populate vision model dropdown
     elements.visionModelOptions.innerHTML = '';
     VISION_MODELS.forEach(m => {
@@ -535,21 +556,17 @@ function setupOrchestrator() {
         elements.researchModelSelect.appendChild(opt);
     });
 
-    // Restore enabled state
+    // Apply enabled state — shows/hides workspace + manual prompt area.
+    applyOrchestratorMode(o.enabled);
     elements.orchestratorToggle.checked = o.enabled;
-    if (o.enabled) {
-        elements.orchestratorSection.open = true;
-        document.body.classList.add('orchestrator-active');
-        elements.promptInput.readOnly = true;
-    }
 
     // Restore image thumbnails
     if (o.sourceImage) renderRoleThumb('source', o.sourceImage);
     if (o.referenceImage) renderRoleThumb('reference', o.referenceImage);
 
-    // Restore transfer checkboxes
+    // Restore transfer checkboxes (in the dynamically-rendered grid)
     Object.entries(o.transfers).forEach(([attr, checked]) => {
-        const cb = document.querySelector(`.toggle-row input[data-attr="${attr}"]`);
+        const cb = document.querySelector(`.ow-toggle-cell input[data-attr="${attr}"]`);
         if (cb) cb.checked = !!checked;
     });
 
@@ -569,10 +586,103 @@ function setupOrchestrator() {
     elements.researchSubjectBtn.disabled = !(o.subjectContext || '').trim();
     if (o.subjectContext) elements.researchSubjectBtn.title = 'Research this subject via web search';
 
+    // Restore drawer open states
+    // Subject Context auto-opens if there's saved text; otherwise honor explicit state.
+    elements.owSubjectContextSection.open = o.subjectContextOpen || !!(o.subjectContext || '').trim();
+    elements.owAdvancedSection.open = !!o.advancedOpen;
+
+    // Render vision model chip
+    renderVisionModelChip();
+    // Initial diff thumbs render
+    updateToggleDiffs();
+
     // Restore last assembled prompt preview
     if (o.lastAssembledPrompt) {
         elements.assembledPromptPreview.textContent = o.lastAssembledPrompt;
     }
+}
+
+// Apply orchestrator-mode visual state: show workspace, hide manual prompt area.
+function applyOrchestratorMode(enabled) {
+    const o = state.orchestrator;
+    o.enabled = !!enabled;
+    document.body.classList.toggle('orchestrator-active', o.enabled);
+    elements.orchestratorWorkspace.hidden = !o.enabled;
+    elements.promptInput.readOnly = o.enabled;
+}
+
+// Render the 9 transfer toggle cells with attached visual-diff thumbs.
+function renderToggleGrid() {
+    elements.owToggleGrid.innerHTML = '';
+    ATTRIBUTE_KEYS.forEach(attr => {
+        const cell = document.createElement('label');
+        cell.className = 'ow-toggle-cell';
+        cell.dataset.cell = attr;
+        cell.innerHTML = `
+            <div class="ow-toggle-cell-row">
+                <input type="checkbox" data-attr="${attr}">
+                <span class="ow-toggle-cell-label">${escapeHtml(ATTRIBUTE_LABELS[attr])}</span>
+                <span class="ow-toggle-cell-source">from SOURCE</span>
+            </div>
+            <div class="ow-diff" data-diff="${attr}"></div>
+        `;
+        elements.owToggleGrid.appendChild(cell);
+    });
+}
+
+// Update the two diff thumbs inside each toggle cell based on current Source/Reference
+// images and the per-attribute checkbox state.
+function updateToggleDiffs() {
+    if (!elements.owToggleGrid) return;
+    const o = state.orchestrator;
+    const src = o.sourceImage;
+    const ref = o.referenceImage;
+
+    ATTRIBUTE_KEYS.forEach(attr => {
+        const checked = !!o.transfers[attr];
+        const cell = elements.owToggleGrid.querySelector(`.ow-toggle-cell[data-cell="${attr}"]`);
+        if (!cell) return;
+        cell.classList.toggle('checked', checked);
+
+        const tag = cell.querySelector('.ow-toggle-cell-source');
+        if (tag) tag.textContent = checked ? 'from REFERENCE' : 'from SOURCE';
+
+        const diff = cell.querySelector('.ow-diff');
+        if (!diff) return;
+
+        const srcThumb = src
+            ? `<div class="ow-diff-thumb ${checked ? 'dimmed' : 'chosen'}" style="background-image:url('${src}')" title="Source"></div>`
+            : `<div class="ow-diff-thumb placeholder" title="No source uploaded"></div>`;
+        const refThumb = ref
+            ? `<div class="ow-diff-thumb ${checked ? 'chosen' : 'dimmed'}" style="background-image:url('${ref}')" title="Reference"></div>`
+            : `<div class="ow-diff-thumb placeholder" title="No reference uploaded"></div>`;
+
+        diff.innerHTML = `${srcThumb}<span class="ow-diff-arrow">→</span>${refThumb}`;
+    });
+}
+
+// Compact one-line chip for the Vision Analyst model in the Advanced drawer.
+function renderVisionModelChip() {
+    if (!elements.visionModelChip) return;
+    const o = state.orchestrator;
+    const customId = (o.visionModelCustom || '').trim();
+    if (customId) {
+        elements.visionModelChip.textContent = `${customId} · custom`;
+        return;
+    }
+    const meta = VISION_MODELS_BY_ID[o.visionModel];
+    if (!meta) {
+        elements.visionModelChip.textContent = '';
+        return;
+    }
+    const pricing = state.modelPricing[o.visionModel];
+    const promptPrice = pricing ? formatPrice(pricing.prompt) : null;
+    const parts = [
+        meta.name,
+        speedGlyph(meta.speed)
+    ];
+    if (promptPrice) parts.push(`${promptPrice} / 1M prompt`);
+    elements.visionModelChip.textContent = parts.join(' · ');
 }
 
 function renderRoleThumb(role, dataUri) {
@@ -600,6 +710,7 @@ function clearRoleThumb(role) {
         state.orchestrator.referenceImage = null;
         elements.referenceInput.value = '';
     }
+    updateToggleDiffs();
     saveOrchestratorState();
 }
 
@@ -621,6 +732,7 @@ async function setRoleImage(role, file) {
         state.orchestrator.referenceImage = dataUri;
     }
     renderRoleThumb(role, dataUri);
+    updateToggleDiffs();
     saveOrchestratorState();
 }
 
@@ -672,25 +784,24 @@ function debounce(fn, ms = 300) {
 function setupOrchestratorEventListeners() {
     const o = state.orchestrator;
 
-    // Enable/disable toggle
+    // Enable/disable toggle — flips the whole layout via applyOrchestratorMode.
     elements.orchestratorToggle.addEventListener('change', () => {
-        o.enabled = elements.orchestratorToggle.checked;
-        document.body.classList.toggle('orchestrator-active', o.enabled);
-        elements.promptInput.readOnly = o.enabled;
-        if (o.enabled) elements.orchestratorSection.open = true;
+        applyOrchestratorMode(elements.orchestratorToggle.checked);
         saveOrchestratorState();
     });
 
-    // Role dropzones
+    // Role dropzones (Source + Reference)
     setupRoleDropzone('source');
     setupRoleDropzone('reference');
 
-    // Transfer checkboxes
-    document.querySelectorAll('.toggle-row input[data-attr]').forEach(cb => {
-        cb.addEventListener('change', () => {
-            o.transfers[cb.dataset.attr] = cb.checked;
-            saveOrchestratorState();
-        });
+    // Transfer checkboxes (dynamically rendered in the workspace toggle grid).
+    // Use event delegation so we don't depend on the rendering order.
+    elements.owToggleGrid.addEventListener('change', (e) => {
+        const cb = e.target.closest('input[type="checkbox"][data-attr]');
+        if (!cb) return;
+        o.transfers[cb.dataset.attr] = cb.checked;
+        updateToggleDiffs();
+        saveOrchestratorState();
     });
 
     // Art style radios
@@ -730,8 +841,7 @@ function setupOrchestratorEventListeners() {
         const meta = VISION_MODELS_BY_ID[id];
         elements.visionModelValue.textContent = meta?.name || id;
         elements.visionModelContainer.classList.remove('open');
-        const effectiveId = o.visionModelCustom?.trim() || id;
-        renderModelInfoCard(effectiveId, elements.visionModelInfo, VISION_MODELS_BY_ID[effectiveId]);
+        renderVisionModelChip();
         saveOrchestratorState();
     });
     document.addEventListener('click', (e) => {
@@ -743,12 +853,23 @@ function setupOrchestratorEventListeners() {
     // Custom vision model ID
     elements.visionModelCustom.addEventListener('input', debounce(() => {
         o.visionModelCustom = elements.visionModelCustom.value;
-        const effectiveId = o.visionModelCustom.trim() || o.visionModel;
-        renderModelInfoCard(effectiveId, elements.visionModelInfo, VISION_MODELS_BY_ID[effectiveId]);
+        renderVisionModelChip();
         saveOrchestratorState();
     }, 250));
 
-    // Subject context
+    // Subject Context drawer open/close persistence
+    elements.owSubjectContextSection.addEventListener('toggle', () => {
+        o.subjectContextOpen = elements.owSubjectContextSection.open;
+        saveOrchestratorState();
+    });
+
+    // Advanced drawer open/close persistence
+    elements.owAdvancedSection.addEventListener('toggle', () => {
+        o.advancedOpen = elements.owAdvancedSection.open;
+        saveOrchestratorState();
+    });
+
+    // Subject context textarea
     elements.subjectContext.addEventListener('input', debounce(() => {
         o.subjectContext = elements.subjectContext.value;
         const hasText = !!o.subjectContext.trim();
@@ -765,8 +886,10 @@ function setupOrchestratorEventListeners() {
         saveOrchestratorState();
     });
 
-    // Research button
-    elements.researchSubjectBtn.addEventListener('click', async () => {
+    // Research button — defensive: prevent the parent <details> from toggling.
+    elements.researchSubjectBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (!state.apiKey) {
             showToast('Save your OpenRouter API key first', 'error');
             return;
@@ -800,6 +923,11 @@ function setupOrchestratorEventListeners() {
         o.notes = elements.orchestratorNotes.value;
         saveOrchestratorState();
     }, 250));
+
+    // Generate button inside the workspace — reuses the same generation pipeline.
+    if (elements.orchestratorGenerateBtn) {
+        elements.orchestratorGenerateBtn.addEventListener('click', generateImages);
+    }
 }
 
 // ===== Event Listeners =====
