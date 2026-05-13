@@ -1120,15 +1120,17 @@ body {
 
 /* ===== Orchestrator Mode Section ===== */
 .orchestrator-section {
+    display: block;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     padding: 0;
-    background: var(--bg-tertiary);
+    background: var(--bg-card);
     overflow: hidden;
 }
 
 .orchestrator-section[open] {
     background: var(--bg-secondary);
+    border-color: var(--text-muted);
 }
 
 .orchestrator-summary {
