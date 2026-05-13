@@ -71,137 +71,17 @@
                 <div class="model-info-card" id="generationModelInfo"></div>
             </div>
 
-            <!-- Orchestrator Mode -->
-            <details class="orchestrator-section" id="orchestratorSection">
-                <summary class="orchestrator-summary">
-                    <div class="orchestrator-summary-text">
-                        <span class="orchestrator-summary-title">Orchestrator Mode</span>
-                        <span class="orchestrator-summary-hint">No-typing image-to-image</span>
-                    </div>
-                    <label class="toggle-switch" onclick="event.stopPropagation()">
+            <!-- Orchestrator Mode toggle (workspace lives in main content) -->
+            <div class="config-section orchestrator-toggle-row" id="orchestratorSection">
+                <label class="toggle-switch-label">
+                    <span class="orchestrator-toggle-title">Orchestrator Mode</span>
+                    <span class="toggle-switch">
                         <input type="checkbox" id="orchestratorToggle">
                         <span class="toggle-slider"></span>
-                    </label>
-                </summary>
-
-                <div class="orchestrator-body">
-                    <!-- Image role slots -->
-                    <div class="role-slots">
-                        <div class="role-slot">
-                            <label class="role-label">Source Image (Character)</label>
-                            <div class="role-dropzone" id="sourceDropzone" data-role="source">
-                                <input type="file" accept="image/*" class="role-input" id="sourceInput">
-                                <div class="role-empty">
-                                    <span class="role-empty-icon">+</span>
-                                    <span class="role-empty-text">Drop or click</span>
-                                </div>
-                                <img class="role-thumb" id="sourceThumb" alt="Source preview" hidden>
-                                <button type="button" class="role-clear" id="sourceClear" title="Remove" hidden>×</button>
-                            </div>
-                        </div>
-                        <div class="role-slot">
-                            <label class="role-label">Reference Image (Style/Pose/Clothes)</label>
-                            <div class="role-dropzone" id="referenceDropzone" data-role="reference">
-                                <input type="file" accept="image/*" class="role-input" id="referenceInput">
-                                <div class="role-empty">
-                                    <span class="role-empty-icon">+</span>
-                                    <span class="role-empty-text">Drop or click</span>
-                                </div>
-                                <img class="role-thumb" id="referenceThumb" alt="Reference preview" hidden>
-                                <button type="button" class="role-clear" id="referenceClear" title="Remove" hidden>×</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Transfer toggles -->
-                    <div class="transform-controls">
-                        <h4 class="transform-heading">Transfer from Reference</h4>
-                        <label class="toggle-row"><input type="checkbox" data-attr="clothing">    <span>Clothing</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="pose">         <span>Pose / Body</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="background">   <span>Background</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="expression">   <span>Facial Expression</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="hair">         <span>Hair (style + color)</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="lighting">     <span>Lighting</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="palette">      <span>Color Palette</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="accessories">  <span>Accessories</span></label>
-                        <label class="toggle-row"><input type="checkbox" data-attr="camera">       <span>Camera / Framing</span></label>
-                        <p class="transform-hint">Unchecked attributes are taken from the Source image. Character identity is always preserved from Source.</p>
-                    </div>
-
-                    <!-- Art style -->
-                    <div class="transform-controls">
-                        <h4 class="transform-heading">Art Style</h4>
-                        <label class="radio-row"><input type="radio" name="artStyle" value="source" checked> <span>Use Source style</span></label>
-                        <label class="radio-row"><input type="radio" name="artStyle" value="reference">     <span>Use Reference style</span></label>
-                        <label class="radio-row"><input type="radio" name="artStyle" value="blend">         <span>Blend both</span></label>
-                    </div>
-
-                    <!-- Identity lock & creativity -->
-                    <div class="slider-row">
-                        <label for="identityLock">Identity Lock</label>
-                        <select id="identityLock" class="text-input">
-                            <option value="low">Low (allow variation)</option>
-                            <option value="medium">Medium</option>
-                            <option value="high" selected>High</option>
-                            <option value="max">Maximum (100% face)</option>
-                        </select>
-                    </div>
-                    <div class="slider-row">
-                        <label for="creativitySlider">Creativity</label>
-                        <div class="slider-with-value">
-                            <input type="range" id="creativitySlider" min="0" max="100" value="25">
-                            <span id="creativityValue" class="slider-value">25%</span>
-                        </div>
-                    </div>
-
-                    <!-- Vision Analyst -->
-                    <div class="model-row">
-                        <label>Vision Analyst Model</label>
-                        <div class="custom-select rich" id="visionModelContainer">
-                            <div class="custom-select-trigger" id="visionModelTrigger">
-                                <span id="visionModelValue">Gemini 2.5 Flash</span>
-                                <span class="custom-select-arrow">▾</span>
-                            </div>
-                            <div class="custom-select-options" id="visionModelOptions">
-                                <!-- Populated from VISION_MODELS in app.js -->
-                            </div>
-                        </div>
-                        <input type="text" id="visionModelCustom" class="text-input" placeholder="Or paste a custom OpenRouter model ID…">
-                        <div class="model-info-card" id="visionModelInfo"></div>
-                    </div>
-
-                    <!-- Subject Context -->
-                    <div class="subject-context">
-                        <div class="row-header">
-                            <label for="subjectContext">Subject Context <span class="hint-inline">(optional)</span></label>
-                            <button type="button" id="researchSubjectBtn" class="btn-ghost-sm" disabled title="Type a subject name first">
-                                <span class="research-icon">🔍</span>
-                                <span class="research-label">Research</span>
-                            </button>
-                        </div>
-                        <textarea id="subjectContext" class="text-input" rows="3" placeholder="Describe anything the model might not know — character backstory, obscure product details, recent release, custom IP, distinctive visual traits…"></textarea>
-                        <small class="hint">Helps when the subject isn't in the model's training data. Click Research to auto-fill via Perplexity Sonar.</small>
-                        <div class="research-model-row">
-                            <label for="researchModelSelect">Research with:</label>
-                            <select id="researchModelSelect" class="text-input research-model-select">
-                                <!-- Populated from RESEARCH_MODELS in app.js -->
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Extra notes -->
-                    <div class="subject-context">
-                        <label for="orchestratorNotes">Additional Notes <span class="hint-inline">(optional)</span></label>
-                        <textarea id="orchestratorNotes" class="text-input" rows="2" placeholder="Extra style instructions, things to avoid, mood keywords…"></textarea>
-                    </div>
-
-                    <!-- Assembled prompt preview -->
-                    <div class="prompt-preview">
-                        <label>Assembled prompt preview</label>
-                        <pre id="assembledPromptPreview">— click Generate to assemble —</pre>
-                    </div>
-                </div>
-            </details>
+                    </span>
+                </label>
+                <p class="hint">No-typing image-to-image. Workspace opens to the right.</p>
+            </div>
 
             <!-- Image Quality (Gemini specific) -->
             <div class="config-section" id="geminiOptions">
@@ -246,7 +126,7 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Prompt Area -->
+            <!-- Prompt Area (manual mode) -->
             <div class="prompt-area">
                 <div class="prompt-container">
                     <textarea id="promptInput" placeholder="Describe the image you want to generate..."
@@ -259,6 +139,142 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Orchestrator Workspace (shown when orchestrator mode is on) -->
+            <section id="orchestratorWorkspace" class="orchestrator-workspace" hidden>
+                <header class="ow-header">
+                    <h2>Orchestrator Workspace</h2>
+                    <p class="ow-subtitle">Upload two images, pick what to transfer, and click Generate.</p>
+                </header>
+
+                <!-- 1. Source + Reference slots -->
+                <div class="ow-slots">
+                    <div class="ow-slot">
+                        <label class="ow-slot-label">Source Image <span class="ow-slot-hint">(Character — face & identity to preserve)</span></label>
+                        <div class="role-dropzone ow-dropzone" id="sourceDropzone" data-role="source">
+                            <input type="file" accept="image/*" class="role-input" id="sourceInput">
+                            <div class="role-empty">
+                                <span class="role-empty-icon">+</span>
+                                <span class="role-empty-text">Drop or click to upload</span>
+                            </div>
+                            <img class="role-thumb" id="sourceThumb" alt="Source preview" hidden>
+                            <button type="button" class="role-clear" id="sourceClear" title="Remove" hidden>×</button>
+                        </div>
+                    </div>
+                    <div class="ow-slot">
+                        <label class="ow-slot-label">Reference Image <span class="ow-slot-hint">(Style / Pose / Clothes donor)</span></label>
+                        <div class="role-dropzone ow-dropzone" id="referenceDropzone" data-role="reference">
+                            <input type="file" accept="image/*" class="role-input" id="referenceInput">
+                            <div class="role-empty">
+                                <span class="role-empty-icon">+</span>
+                                <span class="role-empty-text">Drop or click to upload</span>
+                            </div>
+                            <img class="role-thumb" id="referenceThumb" alt="Reference preview" hidden>
+                            <button type="button" class="role-clear" id="referenceClear" title="Remove" hidden>×</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Transfer toggle grid -->
+                <div class="ow-section">
+                    <h3 class="ow-section-heading">Transfer from Reference</h3>
+                    <div class="ow-toggle-grid" id="owToggleGrid">
+                        <!-- 9 toggle cells injected by JS for visual-diff thumbs -->
+                    </div>
+                    <p class="hint">Unchecked attributes come from the Source. Character identity is always preserved from Source.</p>
+                </div>
+
+                <!-- 3. Style & Strength -->
+                <div class="ow-section">
+                    <h3 class="ow-section-heading">Style &amp; Strength</h3>
+                    <div class="ow-style-row">
+                        <div class="ow-style-group">
+                            <span class="ow-style-label">Art Style</span>
+                            <div class="ow-radios">
+                                <label class="radio-row"><input type="radio" name="artStyle" value="source" checked> <span>Source</span></label>
+                                <label class="radio-row"><input type="radio" name="artStyle" value="reference"> <span>Reference</span></label>
+                                <label class="radio-row"><input type="radio" name="artStyle" value="blend"> <span>Blend</span></label>
+                            </div>
+                        </div>
+                        <div class="ow-style-group">
+                            <label for="identityLock" class="ow-style-label">Identity Lock</label>
+                            <select id="identityLock" class="text-input ow-select">
+                                <option value="low">Low (allow variation)</option>
+                                <option value="medium">Medium</option>
+                                <option value="high" selected>High</option>
+                                <option value="max">Maximum (100% face)</option>
+                            </select>
+                        </div>
+                        <div class="ow-style-group ow-style-creativity">
+                            <label for="creativitySlider" class="ow-style-label">Creativity <span id="creativityValue" class="slider-value">25%</span></label>
+                            <input type="range" id="creativitySlider" min="0" max="100" value="25">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Subject Context -->
+                <details class="ow-section ow-details" id="owSubjectContextSection">
+                    <summary class="ow-details-summary">
+                        <span class="ow-section-heading">Subject Context <span class="hint-inline">(optional — for unknown subjects)</span></span>
+                        <button type="button" id="researchSubjectBtn" class="btn-ghost-sm" disabled title="Type a subject name first" onclick="event.preventDefault(); event.stopPropagation();">
+                            <span class="research-icon">🔍</span>
+                            <span class="research-label">Research</span>
+                        </button>
+                    </summary>
+                    <div class="ow-details-body">
+                        <textarea id="subjectContext" class="text-input" rows="3" placeholder="Describe anything the model might not know — character backstory, obscure product details, recent release, custom IP, distinctive visual traits…"></textarea>
+                        <div class="research-model-row">
+                            <label for="researchModelSelect">Research with:</label>
+                            <select id="researchModelSelect" class="text-input research-model-select">
+                                <!-- Populated from RESEARCH_MODELS in app.js -->
+                            </select>
+                        </div>
+                        <small class="hint">Helps when the subject isn't in the model's training data. Click Research to auto-fill via Perplexity Sonar.</small>
+                    </div>
+                </details>
+
+                <!-- 5. Advanced drawer -->
+                <details class="ow-section ow-details" id="owAdvancedSection">
+                    <summary class="ow-details-summary">
+                        <span class="ow-section-heading">Advanced</span>
+                        <span class="ow-details-chevron">▸</span>
+                    </summary>
+                    <div class="ow-details-body">
+                        <div class="ow-advanced-row">
+                            <label class="ow-advanced-label">Vision Analyst Model</label>
+                            <div class="custom-select rich" id="visionModelContainer">
+                                <div class="custom-select-trigger" id="visionModelTrigger">
+                                    <span id="visionModelValue">Gemini 2.5 Flash</span>
+                                    <span class="custom-select-arrow">▾</span>
+                                </div>
+                                <div class="custom-select-options" id="visionModelOptions">
+                                    <!-- Populated from VISION_MODELS in app.js -->
+                                </div>
+                            </div>
+                            <input type="text" id="visionModelCustom" class="text-input" placeholder="Or paste a custom OpenRouter model ID…">
+                            <div class="ow-model-chip" id="visionModelChip"></div>
+                        </div>
+
+                        <div class="ow-advanced-row">
+                            <label for="orchestratorNotes" class="ow-advanced-label">Additional Notes <span class="hint-inline">(optional)</span></label>
+                            <textarea id="orchestratorNotes" class="text-input" rows="2" placeholder="Extra style instructions, things to avoid, mood keywords…"></textarea>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 6. Assembled prompt preview -->
+                <div class="ow-section ow-preview-section">
+                    <h3 class="ow-section-heading">Assembled Prompt Preview</h3>
+                    <pre id="assembledPromptPreview">— click Generate to assemble —</pre>
+                </div>
+
+                <!-- 7. Footer with Generate -->
+                <div class="ow-footer">
+                    <button type="button" class="btn btn-primary ow-generate-btn" id="orchestratorGenerateBtn">
+                        Generate →
+                    </button>
+                </div>
+            </section>
 
             <!-- Gallery -->
             <div class="gallery-header">
