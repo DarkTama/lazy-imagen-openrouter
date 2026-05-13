@@ -262,16 +262,21 @@
                     </div>
                 </details>
 
-                <!-- 6. Assembled prompt preview -->
+                <!-- 6. Assembled prompt (editable textarea — this is what actually gets sent) -->
                 <div class="ow-section ow-preview-section">
-                    <h3 class="ow-section-heading">Assembled Prompt Preview</h3>
-                    <pre id="assembledPromptPreview">— click Generate to assemble —</pre>
+                    <h3 class="ow-section-heading">Assembled Prompt</h3>
+                    <textarea id="assembledPromptPreview" class="ow-preview-textarea" rows="5"
+                        placeholder="Click 'Assemble Prompt' to auto-generate from your toggles, or type your own prompt here."></textarea>
+                    <p class="hint">This is exactly what gets sent to the generation model. Edit freely; Assemble overwrites.</p>
                 </div>
 
-                <!-- 7. Footer with Generate -->
+                <!-- 7. Footer: Assemble (vision call only) + Generate (image call) -->
                 <div class="ow-footer">
+                    <button type="button" class="btn btn-secondary" id="orchestratorAssembleBtn">
+                        <span class="ow-btn-label">Assemble Prompt</span>
+                    </button>
                     <button type="button" class="btn btn-primary ow-generate-btn" id="orchestratorGenerateBtn">
-                        Generate →
+                        <span class="ow-btn-label">Generate Image →</span>
                     </button>
                 </div>
             </section>
