@@ -1968,6 +1968,130 @@ body.orchestrator-active #promptInput::after {
     50%      { opacity: 0.4; }
 }
 
+/* ===== Inline error / warning panel (workspace) ===== */
+.ow-error-panel {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid var(--error);
+    border-radius: var(--border-radius-sm);
+    padding: 14px 16px 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ow-error-panel[hidden] { display: none; }
+
+.ow-error-panel.level-warning {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: var(--warning);
+}
+
+.ow-error-title {
+    color: var(--error);
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin: 0 32px 0 0;
+}
+
+.ow-error-panel.level-warning .ow-error-title {
+    color: var(--warning);
+}
+
+.ow-error-body {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.ow-error-suggestion {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.ow-error-suggestion:empty { display: none; }
+
+.ow-error-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+.ow-error-actions:empty { display: none; }
+
+.ow-error-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: none;
+    border: 0;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--border-radius-sm);
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.ow-error-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.ow-error-technical summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    padding: 4px 0;
+    user-select: none;
+    list-style: none;
+}
+.ow-error-technical summary::-webkit-details-marker { display: none; }
+.ow-error-technical summary::before {
+    content: '▸ ';
+    display: inline-block;
+    transition: transform var(--transition-fast);
+}
+.ow-error-technical[open] summary::before {
+    content: '▾ ';
+}
+.ow-error-technical[open] summary { color: var(--text-secondary); }
+.ow-error-technical[hidden] { display: none; }
+.ow-error-technical pre {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 4px 0 0;
+}
+
+/* Checkbox row used inside the Advanced drawer for auto-compress toggle */
+.ow-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+.ow-checkbox-row input[type="checkbox"] {
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
 /* ===== Role picker popover ===== */
 /* Shown when clicking "Use as Reference" on a gallery card while orchestrator
    mode is on, so the user can pick Source or Reference slot. */
