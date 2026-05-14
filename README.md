@@ -99,6 +99,14 @@ Orchestrator Mode makes up to three OpenRouter calls per generation:
 
 Manual prompt mode skips the vision call entirely and only uses the (paid) image-generation model.
 
+### A note on content restrictions
+
+Every image-generation model currently available on OpenRouter is from Google (Gemini Image / "Nano Banana") or OpenAI (GPT-5, GPT-5.4 Image). Both have moderate-to-strict content policies. **Anime-permissive providers (Flux, Stable Diffusion, NovelAI, Pony) are not on OpenRouter as of this writing.**
+
+If the **vision step** (Assemble Prompt) refuses your images — symptom is an "undefined" prompt or a "Vision response was not valid JSON" error — switch the Vision Analyst Model in the **Advanced** drawer to **Qwen2.5-VL 72B** or **Llama 3.2 90B Vision**. Both are open-weight and significantly more permissive at describing character/anime content.
+
+If the **image generation step** refuses, try **GPT-5.4 Image 2** (different content-policy thresholds than Gemini) or simplify the assembled prompt before clicking Generate.
+
 ## 🧩 Orchestrator Mode — User Guide
 
 Orchestrator Mode is for **image-to-image** work where you want to take a character from one image and combine them with elements (outfit, pose, background, etc.) from another image, without writing a prose prompt yourself.

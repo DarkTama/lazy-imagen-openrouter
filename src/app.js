@@ -86,6 +86,38 @@ const ImagenDB = {
     }
 };
 
+// ===== Structured API Error =====
+// Carries enough info for the error classifier to produce friendly UX.
+class ApiError extends Error {
+    constructor({ status, message, body, kind, stage, modelId }) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;       // HTTP status if applicable
+        this.body = body || '';     // raw response body text (for "Show technical details")
+        this.kind = kind;           // 'http' | 'refusal' | 'parse' | 'no-image' | 'network'
+        this.stage = stage;         // 'vision' | 'generation' | 'research'
+        this.modelId = modelId;
+    }
+}
+
+// Heuristic: did the vision model refuse to describe the image?
+// Triggered by common refusal openers + content-policy keywords.
+function looksLikeRefusal(text) {
+    if (!text || typeof text !== 'string') return false;
+    const lead = text.trim().slice(0, 200).toLowerCase();
+    const openers = [
+        "i'm sorry", "i am sorry", "i cannot", "i can't",
+        "i'm unable", "i am unable", "unfortunately,", "as an ai"
+    ];
+    if (openers.some(o => lead.startsWith(o))) return true;
+    const phrases = [
+        'content policy', 'safety guidelines', 'safety policy',
+        'cannot describe', 'cannot provide', 'inappropriate',
+        'violates', 'unable to comply'
+    ];
+    return phrases.some(p => lead.includes(p));
+}
+
 // ===== State Management =====
 const ORCHESTRATOR_DEFAULTS = {
     enabled: false,
@@ -106,7 +138,8 @@ const ORCHESTRATOR_DEFAULTS = {
     notes: '',
     lastAssembledPrompt: '',
     advancedOpen: false,         // <details> Advanced drawer state
-    subjectContextOpen: false    // <details> Subject Context drawer state
+    subjectContextOpen: false,   // <details> Subject Context drawer state
+    autoCompress: true           // auto-resize large Source/Reference uploads
 };
 
 // Human-readable labels for each transfer attribute (used in the toggle grid).
@@ -177,16 +210,6 @@ const MODEL_CONFIGS = {
         speed: 'fast',
         notes: 'Strong all-rounder. Supports image-to-image with up to 3 references.'
     },
-    'google/gemini-2.5-flash-image-preview': {
-        name: 'Gemini 2.5 Flash Image (Preview)',
-        supportsImageSize: true,
-        supportsAspectRatio: true,
-        supportsImageInput: true,
-        maxReferences: 3,
-        bestFor: 'Preview build of Gemini 2.5 Flash Image',
-        speed: 'fast',
-        notes: 'May be cheaper or differently rate-limited than the stable release.'
-    },
     'google/gemini-3.1-flash-image-preview': {
         name: 'Gemini 3.1 Flash Image (Preview)',
         supportsImageSize: true,
@@ -227,85 +250,25 @@ const MODEL_CONFIGS = {
         speed: 'fast',
         notes: 'Smaller variant of GPT-5 Image — lower cost, slightly reduced quality.'
     },
-    'black-forest-labs/flux.2-pro': {
-        name: 'Flux 2 Pro',
+    'openai/gpt-5.4-image-2': {
+        name: 'GPT-5.4 Image 2',
         supportsImageSize: false,
         supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Photorealism and artistic flexibility',
+        supportsImageInput: true,
+        maxReferences: 1,
+        bestFor: 'Newer OpenAI image model — try if Gemini refuses',
         speed: 'med',
-        notes: 'Text-to-image only. No reference image support.'
+        notes: "OpenAI's latest image model. Different content policy thresholds than Gemini."
     },
-    'black-forest-labs/flux.2-max': {
-        name: 'Flux 2 Max',
+    'openrouter/auto': {
+        name: 'Auto (OpenRouter chooses)',
         supportsImageSize: false,
         supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Highest fidelity Flux output',
-        speed: 'slow',
-        notes: 'Premium Flux tier — best for hero shots. Text-to-image only.'
-    },
-    'black-forest-labs/flux.2-flex': {
-        name: 'Flux 2 Flex',
-        supportsImageSize: false,
-        supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Balanced quality vs cost in the Flux family',
-        speed: 'fast',
-        notes: 'Mid-tier Flux. Text-to-image only.'
-    },
-    'black-forest-labs/flux.2-klein-4b': {
-        name: 'Flux 2 Klein 4B',
-        supportsImageSize: false,
-        supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Cheapest Flux option, fastest turnaround',
-        speed: 'fast',
-        notes: 'Small 4B-parameter Flux variant. Good for drafts.'
-    },
-    'bytedance-seed/seedream-4.5': {
-        name: 'Seedream 4.5',
-        supportsImageSize: false,
-        supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Stylized illustration and anime aesthetics',
+        supportsImageInput: true,
+        maxReferences: 3,
+        bestFor: "Lets OpenRouter pick — useful if you don't care which provider",
         speed: 'med',
-        notes: 'ByteDance model. Strong on East Asian art styles. Text-to-image only.'
-    },
-    'sourceful/riverflow-v2-fast-preview': {
-        name: 'Riverflow V2 Fast',
-        supportsImageSize: false,
-        supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Quick exploratory generations',
-        speed: 'fast',
-        notes: 'Fast tier of Riverflow V2. Text-to-image only.'
-    },
-    'sourceful/riverflow-v2-standard-preview': {
-        name: 'Riverflow V2 Standard',
-        supportsImageSize: false,
-        supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Balanced quality and speed',
-        speed: 'med',
-        notes: 'Standard tier of Riverflow V2. Text-to-image only.'
-    },
-    'sourceful/riverflow-v2-max-preview': {
-        name: 'Riverflow V2 Max',
-        supportsImageSize: false,
-        supportsAspectRatio: true,
-        supportsImageInput: false,
-        maxReferences: 0,
-        bestFor: 'Highest quality Riverflow output',
-        speed: 'slow',
-        notes: 'Max tier of Riverflow V2. Text-to-image only.'
+        notes: 'Auto-routes across available image-gen models. Behavior depends on routing.'
     }
 };
 
@@ -423,6 +386,9 @@ const elements = {
     visionModelChip: document.getElementById('visionModelChip'),
     owSubjectContextSection: document.getElementById('owSubjectContextSection'),
     owAdvancedSection: document.getElementById('owAdvancedSection'),
+    owErrorPanel: document.getElementById('owErrorPanel'),
+    owErrorClose: document.getElementById('owErrorClose'),
+    autoCompressToggle: document.getElementById('autoCompressToggle'),
     subjectContext: document.getElementById('subjectContext'),
     researchSubjectBtn: document.getElementById('researchSubjectBtn'),
     researchModelSelect: document.getElementById('researchModelSelect'),
@@ -597,6 +563,11 @@ function setupOrchestrator() {
     elements.researchSubjectBtn.disabled = !(o.subjectContext || '').trim();
     if (o.subjectContext) elements.researchSubjectBtn.title = 'Research this subject via web search';
 
+    // Restore auto-compress toggle (default true for backwards-compat).
+    if (elements.autoCompressToggle) {
+        elements.autoCompressToggle.checked = o.autoCompress !== false;
+    }
+
     // Restore drawer open states
     // Subject Context auto-opens if there's saved text; otherwise honor explicit state.
     elements.owSubjectContextSection.open = o.subjectContextOpen || !!(o.subjectContext || '').trim();
@@ -725,18 +696,26 @@ function clearRoleThumb(role) {
     saveOrchestratorState();
 }
 
-function readFileAsDataURI(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-}
-
 async function setRoleImage(role, file) {
     if (!file || !file.type.startsWith('image/')) return;
-    const dataUri = await readFileAsDataURI(file);
+    const isLarge = file.size > LARGE_IMAGE_THRESHOLD_BYTES;
+    let dataUri;
+
+    if (isLarge && state.orchestrator.autoCompress) {
+        try {
+            dataUri = await compressImageFile(file);
+            const beforeKB = Math.round(file.size / 1024);
+            const afterKB = approxKB(dataUri);
+            showToast(`Compressed ${role}: ${beforeKB} KB → ~${afterKB} KB`, 'success');
+        } catch (err) {
+            console.error('Compression failed:', err);
+            dataUri = await readFileAsDataURI(file);
+            showToast(`Couldn't compress — using original (${(file.size / 1024 / 1024).toFixed(1)} MB)`, 'warning');
+        }
+    } else {
+        dataUri = await readFileAsDataURI(file);
+    }
+
     if (role === 'source') {
         state.orchestrator.sourceImage = dataUri;
     } else {
@@ -745,6 +724,35 @@ async function setRoleImage(role, file) {
     renderRoleThumb(role, dataUri);
     updateToggleDiffs();
     saveOrchestratorState();
+
+    // If auto-compress was off and the file was large, surface a warning panel
+    // with a one-click "Compress now" action.
+    if (isLarge && !state.orchestrator.autoCompress) {
+        const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        const stateKey = role === 'source' ? 'sourceImage' : 'referenceImage';
+        showOrchestratorWarning({
+            title: 'Large image uploaded',
+            body: `${roleLabel} is ${(file.size / 1024 / 1024).toFixed(1)} MB. This may exceed browser storage (~5 MB total) and increases vision-API token cost.`,
+            suggestion: 'Compress to ~2048px JPEG to fit storage and reduce token cost. Existing image is kept until you click below.',
+            action: {
+                label: 'Compress now',
+                handler: async () => {
+                    try {
+                        const compressed = await compressDataUri(state.orchestrator[stateKey]);
+                        state.orchestrator[stateKey] = compressed;
+                        renderRoleThumb(role, compressed);
+                        updateToggleDiffs();
+                        saveOrchestratorState();
+                        hideOrchestratorPanel();
+                        showToast(`Compressed to ~${approxKB(compressed)} KB`, 'success');
+                    } catch (err) {
+                        console.error('On-demand compression failed:', err);
+                        showToast(`Compression failed: ${err.message}`, 'error');
+                    }
+                }
+            }
+        }, `File: ${file.name}\nSize: ${(file.size / 1024 / 1024).toFixed(2)} MB\nType: ${file.type}`);
+    }
 }
 
 function setupRoleDropzone(role) {
@@ -951,6 +959,19 @@ function setupOrchestratorEventListeners() {
             state.orchestrator.lastAssembledPrompt = elements.assembledPromptPreview.value;
             saveOrchestratorState();
         }, 300));
+    }
+
+    // Dismiss the inline error/warning panel.
+    if (elements.owErrorClose) {
+        elements.owErrorClose.addEventListener('click', hideOrchestratorPanel);
+    }
+
+    // Auto-compress toggle (Advanced drawer).
+    if (elements.autoCompressToggle) {
+        elements.autoCompressToggle.addEventListener('change', () => {
+            state.orchestrator.autoCompress = elements.autoCompressToggle.checked;
+            saveOrchestratorState();
+        });
     }
 }
 
@@ -1294,39 +1315,68 @@ Return ONLY a JSON object with these keys (strings, concise — 1 sentence each,
 Output strictly valid JSON. No prose around it. No code fences.`;
 
 async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${state.apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': window.location.origin,
-            'X-Title': 'Imagen Internal Tool'
-        },
-        body: JSON.stringify({
-            model: modelId,
-            messages: [
-                { role: 'system', content: VISION_SYSTEM_PROMPT },
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'image_url', image_url: { url: sourceB64, detail: 'high' } },
-                        { type: 'image_url', image_url: { url: referenceB64, detail: 'high' } },
-                        { type: 'text', text: 'Analyze both images and return the JSON described in the system prompt.' }
-                    ]
-                }
-            ]
-        })
-    });
+    let response;
+    try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.origin,
+                'X-Title': 'Imagen Internal Tool'
+            },
+            body: JSON.stringify({
+                model: modelId,
+                messages: [
+                    { role: 'system', content: VISION_SYSTEM_PROMPT },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'image_url', image_url: { url: sourceB64, detail: 'high' } },
+                            { type: 'image_url', image_url: { url: referenceB64, detail: 'high' } },
+                            { type: 'text', text: 'Analyze both images and return the JSON described in the system prompt.' }
+                        ]
+                    }
+                ]
+            })
+        });
+    } catch (netErr) {
+        throw new ApiError({
+            kind: 'network', stage: 'vision', modelId,
+            message: netErr.message || 'Network request failed',
+            body: String(netErr)
+        });
+    }
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `Vision API error: ${response.status}`);
+        const bodyText = await response.text().catch(() => '');
+        let parsedMsg;
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) {}
+        throw new ApiError({
+            kind: 'http', stage: 'vision', modelId,
+            status: response.status,
+            message: parsedMsg || `HTTP ${response.status}`,
+            body: bodyText
+        });
     }
 
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content;
     if (typeof raw !== 'string' || !raw.trim()) {
-        throw new Error('Vision model returned no text content.');
+        throw new ApiError({
+            kind: 'refusal', stage: 'vision', modelId,
+            message: 'Vision model returned no text content',
+            body: JSON.stringify(data, null, 2)
+        });
+    }
+
+    // Detect refusal *before* trying JSON.parse — refusals look like prose, not JSON.
+    if (looksLikeRefusal(raw)) {
+        throw new ApiError({
+            kind: 'refusal', stage: 'vision', modelId,
+            message: 'Vision model refused to describe the image',
+            body: raw
+        });
     }
 
     // Try direct parse first; otherwise extract the first {...} block.
@@ -1334,41 +1384,75 @@ async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
         return JSON.parse(raw);
     } catch (_) {
         const match = raw.match(/\{[\s\S]*\}/);
-        if (!match) throw new Error('Vision response was not valid JSON.');
-        return JSON.parse(match[0]);
+        if (!match) {
+            throw new ApiError({
+                kind: 'parse', stage: 'vision', modelId,
+                message: 'Vision response was not valid JSON',
+                body: raw
+            });
+        }
+        try {
+            return JSON.parse(match[0]);
+        } catch (e) {
+            throw new ApiError({
+                kind: 'parse', stage: 'vision', modelId,
+                message: 'Vision JSON block failed to parse',
+                body: raw
+            });
+        }
     }
 }
 
 async function researchSubject(subjectText, modelId) {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${state.apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': window.location.origin,
-            'X-Title': 'Imagen Internal Tool'
-        },
-        body: JSON.stringify({
-            model: modelId,
-            messages: [
-                {
-                    role: 'system',
-                    content: `You are a research assistant for an image-generation prompt. The user wants to generate an image of the following subject. Briefly research and describe the subject's distinctive visual features in 3-6 sentences. Focus on: physical appearance, signature clothing/accessories, color scheme, and any visual motifs. Keep it factual and concise. No citations, no markdown headings — just plain prose.`
-                },
-                { role: 'user', content: `Subject: ${subjectText}` }
-            ]
-        })
-    });
+    let response;
+    try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.origin,
+                'X-Title': 'Imagen Internal Tool'
+            },
+            body: JSON.stringify({
+                model: modelId,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are a research assistant for an image-generation prompt. The user wants to generate an image of the following subject. Briefly research and describe the subject's distinctive visual features in 3-6 sentences. Focus on: physical appearance, signature clothing/accessories, color scheme, and any visual motifs. Keep it factual and concise. No citations, no markdown headings — just plain prose.`
+                    },
+                    { role: 'user', content: `Subject: ${subjectText}` }
+                ]
+            })
+        });
+    } catch (netErr) {
+        throw new ApiError({
+            kind: 'network', stage: 'research', modelId,
+            message: netErr.message || 'Network request failed',
+            body: String(netErr)
+        });
+    }
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `Research API error: ${response.status}`);
+        const bodyText = await response.text().catch(() => '');
+        let parsedMsg;
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) {}
+        throw new ApiError({
+            kind: 'http', stage: 'research', modelId,
+            status: response.status,
+            message: parsedMsg || `HTTP ${response.status}`,
+            body: bodyText
+        });
     }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
     if (typeof text !== 'string' || !text.trim()) {
-        throw new Error('Research model returned no content.');
+        throw new ApiError({
+            kind: 'refusal', stage: 'research', modelId,
+            message: 'Research model returned no content',
+            body: JSON.stringify(data, null, 2)
+        });
     }
     return text.trim();
 }
@@ -1445,6 +1529,7 @@ async function assembleOrchestratorPrompt() {
         showToast('Upload both Source and Reference images before assembling', 'error');
         return null;
     }
+    hideOrchestratorPanel();
     const visionModel = (o.visionModelCustom && o.visionModelCustom.trim()) || o.visionModel;
     setAssembleButtonLoading(true);
     try {
@@ -1459,7 +1544,15 @@ async function assembleOrchestratorPrompt() {
         return assembled;
     } catch (err) {
         console.error('Assemble failed:', err);
-        showToast(`Assemble failed: ${err.message}`, 'error');
+        if (err instanceof ApiError) {
+            showOrchestratorError(err);
+        } else {
+            // Plain Error fallback (e.g. unexpected exception) — wrap so panel still works.
+            showOrchestratorError(new ApiError({
+                kind: 'http', stage: 'vision', modelId: visionModel,
+                message: err.message || 'Unknown error', body: String(err)
+            }));
+        }
         return null;
     } finally {
         setAssembleButtonLoading(false);
@@ -1482,7 +1575,8 @@ function snapshotOrchestrator() {
         researchModel: o.researchModel,
         subjectContext: o.subjectContext,
         notes: o.notes,
-        lastAssembledPrompt: o.lastAssembledPrompt
+        lastAssembledPrompt: o.lastAssembledPrompt,
+        autoCompress: o.autoCompress
     };
 }
 
@@ -1544,8 +1638,195 @@ function restoreOrchestratorFromSnapshot(snap) {
         elements.owSubjectContextSection.open = !!(snap.subjectContext || '').trim();
     }
 
+    // Restore auto-compress toggle from snapshot if present.
+    if (elements.autoCompressToggle && snap.autoCompress !== undefined) {
+        elements.autoCompressToggle.checked = !!snap.autoCompress;
+    }
+
     updateToggleDiffs();
     saveOrchestratorState();
+}
+
+// ===== Error classification + workspace panel =====
+// Maps an ApiError to user-facing panel content.
+function classifyError(err) {
+    const status = err.status;
+    const stage = err.stage;
+    const isVision = stage === 'vision';
+    const modelLabel = err.modelId ? `"${err.modelId}"` : 'this model';
+
+    if (err.kind === 'network') {
+        return {
+            title: "Couldn't reach OpenRouter",
+            body: 'The request failed before reaching the server.',
+            suggestion: 'Check your internet connection, then try again.',
+            action: null
+        };
+    }
+    if (status === 401) return {
+        title: 'API key rejected',
+        body: 'OpenRouter rejected the API key currently saved.',
+        suggestion: 'Re-paste your key into the sidebar and click "Save Key".',
+        action: { label: 'Focus API key field', handler: () => { elements.apiKey?.focus(); elements.apiKey?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
+    };
+    if (status === 402) return {
+        title: 'Insufficient credits',
+        body: "Your OpenRouter account doesn't have enough credits for this call.",
+        suggestion: 'Top up your balance at openrouter.ai/credits and try again.',
+        action: { label: 'Open OpenRouter credits', handler: () => window.open('https://openrouter.ai/credits', '_blank', 'noopener') }
+    };
+    if (status === 404) return {
+        title: 'Model not available',
+        body: `${modelLabel} isn't in OpenRouter's catalog right now.`,
+        suggestion: 'Pick a different model from the dropdown.',
+        action: null
+    };
+    if (status === 429) return {
+        title: 'Rate limit hit',
+        body: 'OpenRouter is throttling requests for this model.',
+        suggestion: 'Wait a minute, or switch to a different model to keep working.',
+        action: null
+    };
+    // Refusal (content policy) — vision and generation get different copy.
+    if (err.kind === 'refusal' || (status === 400 && /content|policy|safety|unsafe/i.test(err.body || ''))) {
+        return isVision ? {
+            title: 'Vision model refused the image',
+            body: `${modelLabel} declined to describe the uploaded images — usually a content-policy refusal on character/anime content.`,
+            suggestion: 'Open Advanced and switch the Vision Analyst to Qwen2.5-VL 72B or Llama 3.2 90B Vision — both open-weight and noticeably more permissive.',
+            action: {
+                label: 'Open Advanced',
+                handler: () => {
+                    if (elements.owAdvancedSection) elements.owAdvancedSection.open = true;
+                    setTimeout(() => {
+                        elements.visionModelTrigger?.click();
+                        elements.visionModelContainer?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 50);
+                }
+            }
+        } : {
+            title: 'Generation model refused the prompt',
+            body: 'The image-generation model declined this request, usually due to content policy.',
+            suggestion: 'Try GPT-5.4 Image 2 (different policy thresholds), or edit the assembled prompt to soften it.',
+            action: null
+        };
+    }
+    if (err.kind === 'parse') return {
+        title: "Vision response wasn't valid JSON",
+        body: 'The vision model responded but its output could not be parsed as JSON.',
+        suggestion: 'Switch to Qwen2.5-VL or Gemini 2.5 Flash — they are more reliable at strict JSON output.',
+        action: null
+    };
+    if (err.kind === 'no-image') return {
+        title: 'Generation produced no image',
+        body: 'The model responded successfully but no image was found in the response.',
+        suggestion: 'Try a different generation model or click Generate again (occasionally transient).',
+        action: null
+    };
+    if (typeof status === 'number' && status >= 500) return {
+        title: 'OpenRouter server error',
+        body: `OpenRouter returned HTTP ${status}.`,
+        suggestion: 'Wait a moment and try again. If it persists, check openrouter.ai/status.',
+        action: null
+    };
+    return {
+        title: 'Something went wrong',
+        body: err.message || `HTTP ${status || 'unknown'}`,
+        suggestion: 'Check the technical details below for the raw response.',
+        action: null
+    };
+}
+
+// Renders the inline panel inside the orchestrator workspace.
+// `level` ∈ { 'error', 'warning' }. `info` has { title, body, suggestion, action? }
+// `technical` is an optional pre-formatted string for the details disclosure.
+function showOrchestratorPanel(info, level = 'error', technical = '') {
+    const panel = elements.owErrorPanel;
+    if (!panel) return;
+    panel.classList.remove('level-error', 'level-warning');
+    panel.classList.add(`level-${level}`);
+    document.getElementById('owErrorTitle').textContent = info.title || '';
+    document.getElementById('owErrorBody').textContent = info.body || '';
+    document.getElementById('owErrorSuggestion').textContent = info.suggestion || '';
+    const actions = document.getElementById('owErrorActions');
+    actions.innerHTML = '';
+    if (info.action && info.action.label && info.action.handler) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-ghost-sm';
+        btn.textContent = info.action.label;
+        btn.addEventListener('click', info.action.handler);
+        actions.appendChild(btn);
+    }
+    const tech = document.getElementById('owErrorTechnical');
+    if (tech) tech.textContent = technical;
+    const techWrap = panel.querySelector('.ow-error-technical');
+    if (techWrap) techWrap.hidden = !technical;
+    panel.hidden = false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function showOrchestratorError(err) {
+    const info = classifyError(err);
+    const tech = [
+        err.status ? `HTTP ${err.status}` : null,
+        err.modelId ? `Model: ${err.modelId}` : null,
+        err.stage ? `Stage: ${err.stage}` : null,
+        err.kind ? `Kind: ${err.kind}` : null,
+        '',
+        err.body || err.message || ''
+    ].filter(s => s !== null).join('\n');
+    showOrchestratorPanel(info, 'error', tech);
+}
+
+function showOrchestratorWarning(info, technical = '') {
+    showOrchestratorPanel(info, 'warning', technical);
+}
+
+function hideOrchestratorPanel() {
+    if (elements.owErrorPanel) elements.owErrorPanel.hidden = true;
+}
+
+// ===== Image compression for Source / Reference uploads =====
+const LARGE_IMAGE_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2 MB
+
+function readFileAsDataURI(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('FileReader failed'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function compressDataUri(dataUri, maxDim = 2048, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            let w = img.naturalWidth;
+            let h = img.naturalHeight;
+            if (w > maxDim || h > maxDim) {
+                if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                else        { w = Math.round(w * maxDim / h); h = maxDim; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => reject(new Error('Failed to decode image for compression'));
+        img.src = dataUri;
+    });
+}
+
+async function compressImageFile(file, maxDim = 2048, quality = 0.85) {
+    const dataUri = await readFileAsDataURI(file);
+    return compressDataUri(dataUri, maxDim, quality);
+}
+
+// Approximate decoded byte size of a base64 data URI (base64 ≈ 4/3 of bytes).
+function approxKB(dataUri) {
+    return Math.round(dataUri.length * 0.75 / 1024);
 }
 
 // ===== Model Metadata =====
@@ -1669,6 +1950,7 @@ async function generateImages() {
     // Source-of-truth for the prompt is the editable textarea. If it's empty,
     // auto-run Assemble first; otherwise use what's there verbatim.
     if (state.orchestrator.enabled) {
+        hideOrchestratorPanel();
         const o = state.orchestrator;
         if (!o.sourceImage || !o.referenceImage) {
             showToast('Upload both Source and Reference images before generating', 'error');
@@ -1746,6 +2028,9 @@ async function generateImages() {
     
     showToast(`Queued ${imageCount} image(s) for generation`, 'success');
 
+    // Capture the first generation error so we can surface it after Promise.allSettled.
+    let firstGenError = null;
+
     // Generate images and display each one as it completes
     const generateAndDisplay = async (index) => {
         try {
@@ -1782,6 +2067,7 @@ async function generateImages() {
             console.error('Failed to generate image:', error);
             batch.failed++;
             removeOnePlaceholder(batchId);
+            if (!firstGenError) firstGenError = error;
         }
     };
 
@@ -1804,6 +2090,16 @@ async function generateImages() {
 
     if (batch.completed > 0) {
         showToast(`${batch.completed} image(s) generated!`, 'success');
+    } else if (orchestratorActiveAtStart && firstGenError) {
+        // Surface the rich generation error via the inline workspace panel.
+        if (firstGenError instanceof ApiError) {
+            showOrchestratorError(firstGenError);
+        } else {
+            showOrchestratorError(new ApiError({
+                kind: 'http', stage: 'generation', modelId: currentModel,
+                message: firstGenError.message || 'Unknown error', body: String(firstGenError)
+            }));
+        }
     } else {
         showToast('Failed to generate images. Check console for details.', 'error');
     }
@@ -1859,20 +2155,37 @@ async function generateSingleImage(prompt, modelConfig) {
         requestBody.aspect_ratio = state.aspectRatio;
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${state.apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': window.location.origin,
-            'X-Title': 'Imagen Internal Tool'
-        },
-        body: JSON.stringify(requestBody)
-    });
+    const modelId = state.selectedModel;
+    let response;
+    try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.origin,
+                'X-Title': 'Imagen Internal Tool'
+            },
+            body: JSON.stringify(requestBody)
+        });
+    } catch (netErr) {
+        throw new ApiError({
+            kind: 'network', stage: 'generation', modelId,
+            message: netErr.message || 'Network request failed',
+            body: String(netErr)
+        });
+    }
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `API error: ${response.status}`);
+        const bodyText = await response.text().catch(() => '');
+        let parsedMsg;
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) {}
+        throw new ApiError({
+            kind: 'http', stage: 'generation', modelId,
+            status: response.status,
+            message: parsedMsg || `HTTP ${response.status}`,
+            body: bodyText
+        });
     }
 
     const data = await response.json();
@@ -1882,7 +2195,11 @@ async function generateSingleImage(prompt, modelConfig) {
     const message = data.choices?.[0]?.message;
 
     if (!message) {
-        throw new Error('No response from model');
+        throw new ApiError({
+            kind: 'no-image', stage: 'generation', modelId,
+            message: 'No message in API response',
+            body: JSON.stringify(data, null, 2)
+        });
     }
 
     // Log full response for debugging
@@ -1934,7 +2251,11 @@ async function generateSingleImage(prompt, modelConfig) {
         return message.content;
     }
 
-    throw new Error('No image in response. Check console for full API response.');
+    throw new ApiError({
+        kind: 'no-image', stage: 'generation', modelId,
+        message: 'No image in response',
+        body: JSON.stringify(data, null, 2)
+    });
 }
 
 // ===== Gallery =====
