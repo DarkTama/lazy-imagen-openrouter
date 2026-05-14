@@ -332,6 +332,16 @@ const VISION_MODELS = [
       bestFor: 'Open-weights, strong on anime/art',        speed: 'med',  context: '32K tokens' },
     { id: 'meta-llama/llama-3.2-90b-vision-instruct', name: 'Llama 3.2 90B Vision',
       bestFor: 'Open-weights, general purpose',            speed: 'med',  context: '128K tokens' },
+
+    // === Free tier — rate-limited but $0 per call ===
+    { id: 'google/gemma-4-31b-it:free',               name: 'Gemma 4 31B (free)',
+      bestFor: 'Free — large open Gemma vision model',     speed: 'med',  context: '262K tokens' },
+    { id: 'google/gemma-4-26b-a4b-it:free',           name: 'Gemma 4 26B (free)',
+      bestFor: 'Free — smaller Gemma vision, faster',      speed: 'fast', context: '262K tokens' },
+    { id: 'nvidia/nemotron-nano-12b-v2-vl:free',      name: 'Nemotron Nano 12B VL (free)',
+      bestFor: 'Free — smallest, fastest free option',     speed: 'fast', context: '128K tokens' },
+    { id: 'openrouter/free',                           name: 'OpenRouter Free (auto-routed)',
+      bestFor: 'Free — auto-picks an available free model', speed: 'med',  context: '200K tokens' },
 ];
 
 // Lookup helper for vision models by id.

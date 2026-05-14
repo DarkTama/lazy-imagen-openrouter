@@ -1106,9 +1106,10 @@ body {
 
 /* ===== Rich dropdown — two-line options ===== */
 .custom-select.rich .custom-select-option {
+    display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: 6px;
     padding: 10px 14px;
 }
 
@@ -1116,6 +1117,7 @@ body {
     font-size: 0.72rem;
     color: var(--text-muted);
     font-weight: 400;
+    line-height: 1.4;
 }
 
 /* ===== Sidebar: Orchestrator Toggle Row ===== */

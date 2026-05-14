@@ -87,6 +87,18 @@ That's the manual flow. The rest of the guide covers **Orchestrator Mode**.
 4. Create a new API key.
 5. Copy and paste it into the tool.
 
+### A note on free models
+
+Orchestrator Mode makes up to three OpenRouter calls per generation:
+
+| Call | Free options available? |
+| --- | --- |
+| **Vision analyst** (extracts metadata from Source + Reference) | ✅ Yes — Vision Analyst dropdown entries with **(free)** in the name use OpenRouter's free tier ($0 per call, rate-limited). |
+| **Subject research** (Perplexity Sonar) | ❌ Paid only. |
+| **Image generation** | ❌ Paid only — no free image-generation models on OpenRouter as of this writing. |
+
+Manual prompt mode skips the vision call entirely and only uses the (paid) image-generation model.
+
 ## 🧩 Orchestrator Mode — User Guide
 
 Orchestrator Mode is for **image-to-image** work where you want to take a character from one image and combine them with elements (outfit, pose, background, etc.) from another image, without writing a prose prompt yourself.
