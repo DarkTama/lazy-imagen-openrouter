@@ -155,6 +155,19 @@ const ATTRIBUTE_LABELS = {
     camera: 'Camera / Framing'
 };
 
+// Prompt-friendly phrasing for each attribute (used in the assembled prompt text).
+const ATTRIBUTE_PHRASING = {
+    clothing:    'clothing / outfit',
+    pose:        'pose and body position',
+    background:  'background / setting',
+    expression:  'facial expression',
+    hair:        'hairstyle and hair color',
+    lighting:    'lighting',
+    palette:     'color palette',
+    accessories: 'accessories',
+    camera:      'camera framing and shot type'
+};
+
 function loadOrchestratorState() {
     try {
         const raw = localStorage.getItem('imagen_orchestrator');
@@ -179,6 +192,7 @@ const state = {
     aspectRatio: localStorage.getItem('imagen_aspect_ratio') || '1:1',
     imageCount: parseInt(localStorage.getItem('imagen_count')) || 1,
     references: [], // Dynamic array - unlimited references
+    referenceLabels: null, // Optional per-reference text labels (orchestrator mode only)
     images: [], // Will be loaded from IndexedDB
     currentImage: null,
     pendingBatches: [], // Track pending generation batches { id, prompt, count, completed, failed }
@@ -1289,11 +1303,11 @@ function clearAllReferences() {
 
 const VISION_SYSTEM_PROMPT = `You analyze two images for a prompt-composition pipeline. Image 1 is the SOURCE (character to preserve). Image 2 is the REFERENCE (style/pose/clothes donor).
 
-Return ONLY a JSON object with these keys (strings, concise — 1 sentence each, no markdown):
+Return ONLY a JSON object with these keys. Each value is a string that is SPECIFIC and CONCRETE — name actual colors, materials, garment types, hair details, and visual specifics rather than vague summaries. 1-2 sentences each. (Good: "oversized cream cable-knit sweater, pleated navy skirt, black thigh-high socks". Bad: "casual outfit".) No markdown, no code fences:
   source_char        — physical features of the character in Image 1
-  source_clothes     — what they're wearing in Image 1
+  source_clothing    — what they're wearing in Image 1
   source_pose        — pose / body language in Image 1
-  source_bg          — background of Image 1
+  source_background  — background / setting of Image 1
   source_style       — art style of Image 1
   source_expression  — facial expression in Image 1
   source_hair        — hair style + color in Image 1
@@ -1301,9 +1315,9 @@ Return ONLY a JSON object with these keys (strings, concise — 1 sentence each,
   source_palette     — color palette of Image 1
   source_accessories — accessories visible in Image 1
   source_camera      — camera framing / angle / shot type of Image 1
-  ref_clothes        — what's worn in Image 2
+  ref_clothing       — what's worn in Image 2
   ref_pose           — pose in Image 2
-  ref_bg             — background of Image 2
+  ref_background     — background / setting of Image 2
   ref_style          — art style of Image 2
   ref_expression     — facial expression in Image 2
   ref_hair           — hair in Image 2
@@ -1457,46 +1471,66 @@ async function researchSubject(subjectText, modelId) {
     return text.trim();
 }
 
-// Pure function — composes the final prompt from vision JSON + user preferences.
+// Pure function — composes a structured KEEP/CHANGE instruction from vision JSON
+// + user preferences. The explicit grouping + exclusion line is what keeps the
+// generation model from blending in attributes whose toggle is off.
 function assemblePrompt(v, p) {
-    const pick = (attr) => p.transfers[attr] ? v[`ref_${attr}`] : v[`source_${attr}`];
+    const keep = [];    // attributes sourced from Image 1 (transfer OFF)
+    const change = [];  // attributes sourced from Image 2 (transfer ON)
+    for (const attr of ATTRIBUTE_KEYS) {
+        const phrase = ATTRIBUTE_PHRASING[attr] || attr;
+        if (p.transfers[attr]) {
+            change.push(`- ${phrase}: ${v[`ref_${attr}`] || '(match Image 2)'}`);
+        } else {
+            keep.push(`- ${phrase}: ${v[`source_${attr}`] || '(match Image 1)'}`);
+        }
+    }
 
     const style =
-        p.artStyle === 'source'    ? v.source_style :
-        p.artStyle === 'reference' ? v.ref_style :
-        /* blend */                  `${v.source_style}, blended with ${v.ref_style}`;
+        p.artStyle === 'source'    ? (v.source_style || 'the art style of Image 1') :
+        p.artStyle === 'reference' ? (v.ref_style || 'the art style of Image 2') :
+        `a blend of Image 1's style (${v.source_style || 'unknown'}) and Image 2's style (${v.ref_style || 'unknown'})`;
 
     const lockClause = {
-        low:    'preserve general likeness of the character',
+        low:    'preserve the general likeness of the character',
         medium: "preserve the character's facial identity",
-        high:   'maintain strong facial consistency with Image 1',
-        max:    'maintain 100% facial identity from Image 1 — same eyes, nose, mouth, jawline, skin tone'
-    }[p.identityLock] || '';
+        high:   'maintain strong facial consistency with the character in Image 1',
+        max:    'maintain 100% facial identity from Image 1 — identical eyes, nose, mouth, jawline, and skin tone'
+    }[p.identityLock] || "preserve the character's facial identity";
 
     const creativityClause = p.creativity > 60
-        ? 'allow creative reinterpretation of secondary details.'
+        ? 'You may creatively reinterpret secondary details not specified above.'
         : p.creativity < 20
-            ? 'stay faithful to the source composition.'
+            ? 'Stay strictly faithful to the descriptions above; do not improvise.'
             : '';
 
-    const parts = [
-        p.subjectContext ? `Subject context: ${p.subjectContext}.` : '',
-        `${style} of ${v.source_char},`,
-        `wearing ${pick('clothing')},`,
-        `${pick('pose')},`,
-        `${pick('expression')} expression,`,
-        `with ${pick('hair')},`,
-        `${pick('accessories')},`,
-        `in ${pick('background')},`,
-        `${pick('lighting')} lighting,`,
-        `${pick('palette')} color palette,`,
-        `${pick('camera')} framing.`,
-        lockClause ? lockClause + '.' : '',
-        creativityClause,
-        p.notes ? `Additional notes: ${p.notes}` : ''
+    const lines = [
+        'Composite a new image from the two reference images provided above.',
+        'IMAGE 1 = SOURCE: the character whose identity and likeness must be preserved.',
+        'IMAGE 2 = REFERENCE: a donor image — use it ONLY for the attributes listed under CHANGE.',
+        ''
     ];
-
-    return parts.filter(s => s && s.trim()).join(' ');
+    if (p.subjectContext && p.subjectContext.trim()) {
+        lines.push(`Subject context: ${p.subjectContext.trim()}`, '');
+    }
+    lines.push(`Generate one image of the character from IMAGE 1: ${v.source_char || '(see Image 1)'}.`, '');
+    if (keep.length) {
+        lines.push('KEEP these unchanged from IMAGE 1 (the source):', ...keep, '');
+    }
+    if (change.length) {
+        lines.push('CHANGE these to match IMAGE 2 (the reference):', ...change, '');
+    }
+    lines.push(`Art style: ${style}.`);
+    lines.push(`Identity: ${lockClause}.`);
+    if (creativityClause) lines.push(creativityClause);
+    // The key fix: explicit exclusion so the model doesn't blend in unlisted Image-2 attributes.
+    lines.push(change.length
+        ? 'Do not copy any attribute from IMAGE 2 that is not listed under CHANGE above.'
+        : 'Do not copy anything from IMAGE 2 — reproduce IMAGE 1 faithfully in the chosen art style.');
+    if (p.notes && p.notes.trim()) {
+        lines.push('', `Additional notes: ${p.notes.trim()}`);
+    }
+    return lines.join('\n');
 }
 
 // Loading state helpers for the two workspace footer buttons.
@@ -1946,6 +1980,9 @@ async function generateImages() {
         return;
     }
 
+    // Clear any stale per-image labels; the orchestrator branch re-sets them.
+    state.referenceLabels = null;
+
     // === Orchestrator pre-step ===
     // Source-of-truth for the prompt is the editable textarea. If it's empty,
     // auto-run Assemble first; otherwise use what's there verbatim.
@@ -1979,8 +2016,13 @@ async function generateImages() {
         elements.promptInput.value = prompt;
         elements.charCount.textContent = `${prompt.length} chars`;
 
-        // Inject Source + Reference into state.references for the generation call.
+        // Inject Source + Reference into state.references for the generation call,
+        // with text labels so the model knows which image is which.
         state.references = [o.sourceImage, o.referenceImage];
+        state.referenceLabels = [
+            "IMAGE 1 — SOURCE (preserve this character's identity):",
+            'IMAGE 2 — REFERENCE (attribute / style donor):'
+        ];
         renderReferenceSlots();
     }
 
@@ -2109,18 +2151,23 @@ async function generateSingleImage(prompt, modelConfig) {
     // Build message content
     const content = [];
 
-    // Add reference images if supported
+    // Add reference images if supported. When state.referenceLabels is set
+    // (orchestrator mode), each image is preceded by a text tag so the model
+    // knows which is the SOURCE and which is the REFERENCE.
     if (modelConfig.supportsImageInput) {
         state.references.forEach((ref, index) => {
-            if (ref) {
-                content.push({
-                    type: 'image_url',
-                    image_url: {
-                        url: ref,
-                        detail: 'high'
-                    }
-                });
+            if (!ref) return;
+            const label = state.referenceLabels && state.referenceLabels[index];
+            if (label) {
+                content.push({ type: 'text', text: label });
             }
+            content.push({
+                type: 'image_url',
+                image_url: {
+                    url: ref,
+                    detail: 'high'
+                }
+            });
         });
     }
 
