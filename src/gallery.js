@@ -370,7 +370,7 @@ export function showRolePickerPopover(triggerEl, imageUrl) {
     }, 0);
 }
 
-export function addImageAsReference(index) {
+export async function addImageAsReference(index) {
     const image = state.images[index];
     if (!image) return;
 
@@ -382,8 +382,9 @@ export function addImageAsReference(index) {
     }
 
     state.references.push(image.url);
-    // renderReferenceSlots is in app.js - call it via the global
-    if (window._renderReferenceSlots) window._renderReferenceSlots();
+    // Dynamic import to avoid circular dep with app.js
+    const { renderReferenceSlots } = await import('./app.js');
+    renderReferenceSlots();
     showToast('Image added as reference', 'success');
 }
 
@@ -409,7 +410,7 @@ export function recreateFromImage(image) {
             elements.promptInput.value = image.prompt;
             elements.charCount.textContent = `${image.prompt.length} chars`;
             state.references = image.references?.length ? [...image.references] : [];
-            if (window._renderReferenceSlots) window._renderReferenceSlots();
+            import('./app.js').then(({ renderReferenceSlots }) => renderReferenceSlots());
             showToast('Settings restored. Click Generate to recreate.', 'success');
         }
 

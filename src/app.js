@@ -611,10 +611,5 @@ function downloadCurrentImage() {
     showToast('Download started', 'success');
 }
 
-// ===== Global functions for inline handlers =====
-window.removeReference = removeReference;
-// Expose renderReferenceSlots for gallery.js to call
-window._renderReferenceSlots = renderReferenceSlots;
-
 // ===== Initialize =====
 document.addEventListener('DOMContentLoaded', init);
