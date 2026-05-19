@@ -264,9 +264,7 @@ export async function setRoleImage(role, file) {
                     }
                 }
             }
-        }, 'File: ' + file.name + '
-Size: ' + (file.size / 1024 / 1024).toFixed(2) + ' MB
-Type: ' + file.type);
+        }, `File: ${file.name}\nSize: ${(file.size / 1024 / 1024).toFixed(2)} MB\nType: ${file.type}`);
     }
 }
 
@@ -476,7 +474,7 @@ export function assemblePrompt(v, p) {
     const style =
         p.artStyle === 'source'    ? (v.source_style || 'the art style of Image 1') :
         p.artStyle === 'reference' ? (v.ref_style || 'the art style of Image 2') :
-        'a blend of Image 1's style (' + (v.source_style || 'unknown') + ') and Image 2's style (' + (v.ref_style || 'unknown') + ')';
+        `a blend of Image 1's style (${v.source_style || 'unknown'}) and Image 2's style (${v.ref_style || 'unknown'})`;
 
     const lockClause = {
         low:    'preserve the general likeness of the character',
@@ -516,8 +514,7 @@ export function assemblePrompt(v, p) {
     if (p.notes && p.notes.trim()) {
         lines.push('', 'Additional notes: ' + p.notes.trim());
     }
-    return lines.join('
-');
+    return lines.join('\n');
 }
 
 export function setAssembleButtonLoading(on) {
@@ -774,8 +771,7 @@ export function showOrchestratorError(err) {
         err.kind ? 'Kind: ' + err.kind : null,
         '',
         err.body || err.message || ''
-    ].filter(s => s !== null).join('
-');
+    ].filter(s => s !== null).join('\n');
     showOrchestratorPanel(info, 'error', tech);
 }
 
