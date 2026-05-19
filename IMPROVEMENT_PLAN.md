@@ -1,7 +1,7 @@
 # Lazy Imagen OpenRouter — Improvement Plan
 
 > **Created:** 2026-05-19  
-> **Status:** Planning  
+> **Status:** In Progress  
 > **Last Updated:** 2026-05-19
 
 ---
@@ -62,7 +62,7 @@ Introduce a minimal bundler (Vite or esbuild) to enable import/export, env varia
 ## 2. Security & Robustness
 
 ### 2.1 Audit and Fix `innerHTML` Usage (XSS Prevention)
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** Low  
 
@@ -95,7 +95,7 @@ API key is stored in `localStorage` as plaintext. Add user-facing transparency a
 ---
 
 ### 2.3 Prompt Length Validation
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low  
 
@@ -182,7 +182,7 @@ Toast messages disappear after a few seconds with no way to review them.
 ## 4. Performance
 
 ### 4.1 Move Orchestrator Images to IndexedDB
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** Low–Medium  
 
@@ -217,7 +217,7 @@ All gallery images render into the DOM at once. Add pagination or infinite scrol
 ---
 
 ### 4.3 Concurrency Limit for Batch Generation
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low  
 
@@ -360,10 +360,10 @@ When generation fails with transient errors (429, 5xx), users must manually retr
 
 | # | Improvement | Priority | Effort | Status |
 |---|---|---|---|---|
-| 2.1 | Fix innerHTML / XSS | High | Low | ⬜ |
-| 2.3 | Prompt length validation | Medium | Low | ⬜ |
-| 4.1 | Orchestrator images → IndexedDB | High | Low–Med | ⬜ |
-| 4.3 | Concurrency limit | Medium | Low | ⬜ |
+| 2.1 | Fix innerHTML / XSS | High | Low | ✅ |
+| 2.3 | Prompt length validation | Medium | Low | ✅ |
+| 4.1 | Orchestrator images → IndexedDB | High | Low–Med | ✅ |
+| 4.3 | Concurrency limit | Medium | Low | ✅ |
 | 4.2 | Gallery pagination | High | Low–Med | ⬜ |
 | 3.1 | Responsive layout | High | Medium | ⬜ |
 | 1.1 | Split into modules | High | High | ⬜ |
