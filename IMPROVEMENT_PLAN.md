@@ -1,8 +1,8 @@
 # Lazy Imagen OpenRouter — Improvement Plan
 
 > **Created:** 2026-05-19  
-> **Status:** In Progress  
-> **Last Updated:** 2026-05-19
+> **Status:** Complete  
+> **Last Updated:** 2026-05-20
 
 ---
 
@@ -20,7 +20,7 @@
 ## 1. Architecture & Code Organization
 
 ### 1.1 Split `app.js` into ES Modules
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** High  
 
@@ -28,21 +28,21 @@
 The monolithic `app.js` (~2,900+ lines) handles DB, state management, UI rendering, API calls, and orchestrator logic in a single file. Split into focused modules for maintainability.
 
 **Steps:**
-- [ ] Create module structure: `db.js`, `state.js`, `api.js`, `orchestrator.js`, `ui.js`, `gallery.js`, `utils.js`
-- [ ] Extract IndexedDB wrapper (`ImagenDB`) into `db.js`
-- [ ] Extract state management and defaults into `state.js`
-- [ ] Extract API communication (fetch calls, error handling) into `api.js`
-- [ ] Extract orchestrator logic into `orchestrator.js`
-- [ ] Extract UI helpers (toasts, modals, DOM manipulation) into `ui.js`
-- [ ] Extract gallery rendering into `gallery.js`
-- [ ] Extract shared utilities (`escapeHtml`, `debounce`, etc.) into `utils.js`
-- [ ] Update `index.html` to use `<script type="module">`
-- [ ] Verify all functionality works after split
+- [x] Create module structure: `db.js`, `state.js`, `api.js`, `orchestrator.js`, `ui.js`, `gallery.js`, `utils.js`
+- [x] Extract IndexedDB wrapper (`ImagenDB`) into `db.js`
+- [x] Extract state management and defaults into `state.js`
+- [x] Extract API communication (fetch calls, error handling) into `api.js`
+- [x] Extract orchestrator logic into `orchestrator.js`
+- [x] Extract UI helpers (toasts, modals, DOM manipulation) into `ui.js`
+- [x] Extract gallery rendering into `gallery.js`
+- [x] Extract shared utilities (`escapeHtml`, `debounce`, etc.) into `utils.js`
+- [x] Update `index.html` to use `<script type="module">`
+- [x] Verify all functionality works after split
 
 ---
 
 ### 1.2 Add Build Tooling (Optional)
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Low  
 **Effort:** Medium  
 
@@ -50,12 +50,12 @@ The monolithic `app.js` (~2,900+ lines) handles DB, state management, UI renderi
 Introduce a minimal bundler (Vite or esbuild) to enable import/export, env variables, and dev server with HMR.
 
 **Steps:**
-- [ ] Initialize `package.json`
-- [ ] Add Vite as dev dependency
-- [ ] Configure entry point and output
-- [ ] Add `dev` and `build` scripts
-- [ ] Update `.gitignore` for `node_modules/` and `dist/`
-- [ ] Update README with build instructions
+- [x] Initialize `package.json`
+- [x] Add Vite as dev dependency
+- [x] Configure entry point and output
+- [x] Add `dev` and `build` scripts
+- [x] Update `.gitignore` for `node_modules/` and `dist/`
+- [x] Update README with build instructions
 
 ---
 
@@ -79,7 +79,7 @@ Several places use `innerHTML` with dynamically generated content. While `escape
 ---
 
 ### 2.2 Improve API Key Handling
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low  
 
@@ -113,7 +113,7 @@ Add a soft warning when the assembled/manual prompt exceeds model-specific token
 ## 3. UX & Accessibility
 
 ### 3.1 Responsive / Mobile Layout
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** Medium  
 
@@ -131,7 +131,7 @@ The fixed 320px sidebar and rigid layout don't work on tablets or phones. Add re
 ---
 
 ### 3.2 Accessibility (ARIA & Keyboard Navigation)
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Medium  
 
@@ -139,17 +139,17 @@ The fixed 320px sidebar and rigid layout don't work on tablets or phones. Add re
 Custom dropdowns and interactive elements lack proper ARIA roles and keyboard support.
 
 **Steps:**
-- [ ] Add `role="listbox"`, `role="option"`, `aria-expanded` to custom selects
-- [ ] Implement arrow-key navigation for custom dropdowns
-- [ ] Add `aria-label` to icon-only buttons
-- [ ] Ensure focus management for modals/panels (trap focus, restore on close)
-- [ ] Add skip-to-content link
-- [ ] Test with screen reader (basic verification)
+- [x] Add `role="listbox"`, `role="option"`, `aria-expanded` to custom selects
+- [x] Implement arrow-key navigation for custom dropdowns
+- [x] Add `aria-label` to icon-only buttons
+- [x] Ensure focus management for modals/panels (trap focus, restore on close)
+- [x] Add skip-to-content link
+- [x] Test with screen reader (basic verification)
 
 ---
 
 ### 3.3 Upload Progress Feedback
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Low  
 **Effort:** Low  
 
@@ -157,14 +157,14 @@ Custom dropdowns and interactive elements lack proper ARIA roles and keyboard su
 When auto-compress processes a large image, there's no visual feedback.
 
 **Steps:**
-- [ ] Add a small spinner/progress indicator on the upload zone during compression
-- [ ] Show "Compressing…" text or overlay
-- [ ] Clear indicator when compression completes
+- [x] Add a small spinner/progress indicator on the upload zone during compression
+- [x] Show "Compressing…" text or overlay
+- [x] Clear indicator when compression completes
 
 ---
 
 ### 3.4 Notification History
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Low  
 **Effort:** Low  
 
@@ -172,10 +172,10 @@ When auto-compress processes a large image, there's no visual feedback.
 Toast messages disappear after a few seconds with no way to review them.
 
 **Steps:**
-- [ ] Add a notification log (collapsible panel or icon with badge)
-- [ ] Store last N toast messages with timestamps
-- [ ] Allow user to review and dismiss notifications
-- [ ] Badge the notification icon for unread items
+- [x] Add a notification log (collapsible panel or icon with badge)
+- [x] Store last N toast messages with timestamps
+- [x] Allow user to review and dismiss notifications
+- [x] Badge the notification icon for unread items
 
 ---
 
@@ -200,7 +200,7 @@ Orchestrator state (including base64 source/reference images) is stored in `loca
 ---
 
 ### 4.2 Gallery Pagination / Lazy Loading
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** Low–Medium  
 
@@ -235,7 +235,7 @@ Requesting multiple images fires all API calls simultaneously, risking rate limi
 ## 5. Quality & Developer Experience
 
 ### 5.1 Add Linting & Formatting
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low  
 
@@ -243,16 +243,16 @@ Requesting multiple images fires all API calls simultaneously, risking rate limi
 No consistent code style enforcement. Add ESLint + Prettier.
 
 **Steps:**
-- [ ] Add `.eslintrc.json` with recommended rules
-- [ ] Add `.prettierrc` with project style preferences
-- [ ] Add npm scripts: `lint`, `lint:fix`, `format`
+- [x] Add `.eslintrc.json` with recommended rules
+- [x] Add `.prettierrc` with project style preferences
+- [x] Add npm scripts: `lint`, `lint:fix`, `format`
 - [ ] Fix existing lint errors/warnings
 - [ ] Optionally add a pre-commit hook (husky + lint-staged)
 
 ---
 
 ### 5.2 Add Basic Tests
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Medium  
 
@@ -260,19 +260,19 @@ No consistent code style enforcement. Add ESLint + Prettier.
 No tests exist. Add unit tests for pure logic functions.
 
 **Steps:**
-- [ ] Choose test framework (Vitest recommended for speed)
-- [ ] Set up test configuration
-- [ ] Write tests for `assemblePrompt()`
-- [ ] Write tests for `classifyError()`
-- [ ] Write tests for `escapeHtml()` and utility functions
-- [ ] Write tests for `compressDataUri()` (mock canvas)
-- [ ] Add npm `test` script
-- [ ] Document how to run tests in README
+- [x] Choose test framework (Vitest recommended for speed)
+- [x] Set up test configuration
+- [x] Write tests for `assemblePrompt()`
+- [x] Write tests for `classifyError()`
+- [x] Write tests for `escapeHtml()` and utility functions
+- [x] Write tests for `compressDataUri()` (mock canvas)
+- [x] Add npm `test` script
+- [x] Document how to run tests in README
 
 ---
 
 ### 5.3 Configuration & Contributor Docs
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Low  
 **Effort:** Low  
 
@@ -280,16 +280,16 @@ No tests exist. Add unit tests for pure logic functions.
 No `.env.example`, contributing guide, or development setup instructions.
 
 **Steps:**
-- [ ] Add `CONTRIBUTING.md` with setup and workflow instructions
-- [ ] Document browser requirements (clipboard API, IndexedDB, etc.)
-- [ ] Add architecture overview to README or separate doc
+- [x] Add `CONTRIBUTING.md` with setup and workflow instructions
+- [x] Document browser requirements (clipboard API, IndexedDB, etc.)
+- [x] Add architecture overview to README or separate doc
 
 ---
 
 ## 6. Feature Enhancements
 
 ### 6.1 Image Export/Import (Backup & Restore)
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Medium  
 
@@ -297,16 +297,16 @@ No `.env.example`, contributing guide, or development setup instructions.
 Users can't back up or transfer their gallery. Add export/import functionality.
 
 **Steps:**
-- [ ] Add "Export Gallery" button → downloads ZIP of images + metadata JSON
-- [ ] Add "Import Gallery" option → accepts ZIP, merges into IndexedDB
-- [ ] Handle duplicate detection (by ID or hash)
-- [ ] Show progress during export/import
-- [ ] Add export for individual images (already partially exists via download)
+- [x] Add "Export Gallery" button → downloads ZIP of images + metadata JSON
+- [x] Add "Import Gallery" option → accepts ZIP, merges into IndexedDB
+- [x] Handle duplicate detection (by ID or hash)
+- [x] Show progress during export/import
+- [x] Add export for individual images (already partially exists via download)
 
 ---
 
 ### 6.2 Prompt History & Favorites
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low–Medium  
 
@@ -314,16 +314,16 @@ Users can't back up or transfer their gallery. Add export/import functionality.
 No way to save and reuse good prompts.
 
 **Steps:**
-- [ ] Store last N prompts in IndexedDB with timestamps
-- [ ] Add a "History" dropdown/panel near the prompt textarea
-- [ ] Allow marking prompts as favorites (starred)
-- [ ] Add click-to-reuse and click-to-edit actions
-- [ ] Include both manual and assembled prompts
+- [x] Store last N prompts in IndexedDB with timestamps
+- [x] Add a "History" dropdown/panel near the prompt textarea
+- [x] Allow marking prompts as favorites (starred)
+- [x] Add click-to-reuse and click-to-edit actions
+- [x] Include both manual and assembled prompts
 
 ---
 
 ### 6.3 Dark / Light Theme Toggle
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Low  
 **Effort:** Low  
 
@@ -331,16 +331,16 @@ No way to save and reuse good prompts.
 App is dark-mode only. Add a theme toggle leveraging existing CSS variables.
 
 **Steps:**
-- [ ] Define light-mode CSS variable overrides (`:root[data-theme="light"]`)
-- [ ] Add theme toggle button in sidebar header
-- [ ] Persist theme preference in localStorage
-- [ ] Respect `prefers-color-scheme` as default
-- [ ] Test all components in both themes
+- [x] Define light-mode CSS variable overrides (`:root[data-theme="light"]`)
+- [x] Add theme toggle button in sidebar header
+- [x] Persist theme preference in localStorage
+- [x] Respect `prefers-color-scheme` as default
+- [x] Test all components in both themes
 
 ---
 
 ### 6.4 Auto-Retry with Backoff
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Low  
 **Effort:** Low  
 
@@ -348,11 +348,11 @@ App is dark-mode only. Add a theme toggle leveraging existing CSS variables.
 When generation fails with transient errors (429, 5xx), users must manually retry.
 
 **Steps:**
-- [ ] Implement exponential backoff utility (base 2s, max 3 retries)
-- [ ] Apply to `generateSingleImage()` for retryable status codes (429, 500-503)
-- [ ] Show "Retrying in Xs…" in the loading placeholder
-- [ ] Skip retry for non-transient errors (400, 401, 402, 404)
-- [ ] Make retry configurable (on/off toggle in settings)
+- [x] Implement exponential backoff utility (base 2s, max 3 retries)
+- [x] Apply to `generateSingleImage()` for retryable status codes (429, 500-503)
+- [x] Show "Retrying in Xs…" in the loading placeholder
+- [x] Skip retry for non-transient errors (400, 401, 402, 404)
+- [x] Make retry configurable (on/off toggle in settings)
 
 ---
 
@@ -364,21 +364,21 @@ When generation fails with transient errors (429, 5xx), users must manually retr
 | 2.3 | Prompt length validation | Medium | Low | ✅ |
 | 4.1 | Orchestrator images → IndexedDB | High | Low–Med | ✅ |
 | 4.3 | Concurrency limit | Medium | Low | ✅ |
-| 4.2 | Gallery pagination | High | Low–Med | ⬜ |
-| 3.1 | Responsive layout | High | Medium | ⬜ |
-| 1.1 | Split into modules | High | High | ⬜ |
-| 3.2 | Accessibility | Medium | Medium | ⬜ |
-| 5.1 | Linting & formatting | Medium | Low | ⬜ |
-| 2.2 | API key handling | Medium | Low | ⬜ |
-| 6.2 | Prompt history | Medium | Low–Med | ⬜ |
-| 6.1 | Export/Import gallery | Medium | Medium | ⬜ |
-| 5.2 | Tests | Medium | Medium | ⬜ |
-| 6.3 | Theme toggle | Low | Low | ⬜ |
-| 6.4 | Auto-retry | Low | Low | ⬜ |
-| 3.3 | Upload progress | Low | Low | ⬜ |
-| 3.4 | Notification history | Low | Low | ⬜ |
-| 1.2 | Build tooling | Low | Medium | ⬜ |
-| 5.3 | Contributor docs | Low | Low | ⬜ |
+| 4.2 | Gallery pagination | High | Low–Med | ✅ |
+| 3.1 | Responsive layout | High | Medium | ✅ |
+| 1.1 | Split into modules | High | High | ✅ |
+| 3.2 | Accessibility | Medium | Medium | ✅ |
+| 5.1 | Linting & formatting | Medium | Low | ✅ |
+| 2.2 | API key handling | Medium | Low | ✅ |
+| 6.2 | Prompt history | Medium | Low–Med | ✅ |
+| 6.1 | Export/Import gallery | Medium | Medium | ✅ |
+| 5.2 | Tests | Medium | Medium | ✅ |
+| 6.3 | Theme toggle | Low | Low | ✅ |
+| 6.4 | Auto-retry | Low | Low | ✅ |
+| 3.3 | Upload progress | Low | Low | ✅ |
+| 3.4 | Notification history | Low | Low | ✅ |
+| 1.2 | Build tooling | Low | Medium | ✅ |
+| 5.3 | Contributor docs | Low | Low | ✅ |
 
 ---
 

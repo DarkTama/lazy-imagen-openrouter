@@ -11,7 +11,17 @@
 </head>
 
 <body>
+    <a href="#promptInput" class="skip-link">Skip to content</a>
     <div class="app-container">
+        <!-- Sidebar Toggle (mobile/tablet) -->
+        <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -24,6 +34,22 @@
                     </svg>
                     Imagen
                 </h1>
+                <button type="button" class="btn-theme-toggle" id="themeToggleBtn" aria-label="Toggle theme">
+                    <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
             </div>
 
             <!-- Reference Images Section -->
@@ -39,18 +65,18 @@
             <div class="config-section">
                 <h3>Model</h3>
                 <div class="custom-select" id="modelSelectContainer">
-                    <div class="custom-select-trigger" id="modelSelectTrigger">
+                    <div class="custom-select-trigger" id="modelSelectTrigger" role="button" aria-haspopup="listbox" aria-expanded="false" tabindex="0">
                         <span id="modelSelectValue">Gemini 2.5 Flash Image</span>
-                        <span class="custom-select-arrow">▾</span>
+                        <span class="custom-select-arrow">&#x25BE;</span>
                     </div>
-                    <div class="custom-select-options" id="modelSelectOptions">
-                        <div class="custom-select-option selected" data-value="google/gemini-2.5-flash-image">Gemini 2.5 Flash Image</div>
-                        <div class="custom-select-option" data-value="google/gemini-3.1-flash-image-preview">Gemini 3.1 Flash (Preview)</div>
-                        <div class="custom-select-option" data-value="google/gemini-3-pro-image-preview">Gemini 3 Pro (Preview)</div>
-                        <div class="custom-select-option" data-value="openai/gpt-5-image">GPT-5 Image</div>
-                        <div class="custom-select-option" data-value="openai/gpt-5-image-mini">GPT-5 Image Mini</div>
-                        <div class="custom-select-option" data-value="openai/gpt-5.4-image-2">GPT-5.4 Image 2</div>
-                        <div class="custom-select-option" data-value="openrouter/auto">Auto (OpenRouter chooses)</div>
+                    <div class="custom-select-options" id="modelSelectOptions" role="listbox">
+                        <div class="custom-select-option selected" data-value="google/gemini-2.5-flash-image" role="option">Gemini 2.5 Flash Image</div>
+                        <div class="custom-select-option" data-value="google/gemini-3.1-flash-image-preview" role="option">Gemini 3.1 Flash (Preview)</div>
+                        <div class="custom-select-option" data-value="google/gemini-3-pro-image-preview" role="option">Gemini 3 Pro (Preview)</div>
+                        <div class="custom-select-option" data-value="openai/gpt-5-image" role="option">GPT-5 Image</div>
+                        <div class="custom-select-option" data-value="openai/gpt-5-image-mini" role="option">GPT-5 Image Mini</div>
+                        <div class="custom-select-option" data-value="openai/gpt-5.4-image-2" role="option">GPT-5.4 Image 2</div>
+                        <div class="custom-select-option" data-value="openrouter/auto" role="option">Auto (OpenRouter chooses)</div>
                     </div>
                 </div>
                 <div class="model-info-card" id="generationModelInfo"></div>
@@ -95,17 +121,33 @@
             <div class="config-section">
                 <h3>Number of Images</h3>
                 <div class="number-input-group">
-                    <button type="button" class="btn-number" id="decreaseCount">−</button>
+                    <button type="button" class="btn-number" id="decreaseCount" aria-label="Decrease image count">&#x2212;</button>
                     <input type="number" id="imageCount" value="1" min="1" max="8" class="number-input">
-                    <button type="button" class="btn-number" id="increaseCount">+</button>
+                    <button type="button" class="btn-number" id="increaseCount" aria-label="Increase image count">+</button>
                 </div>
             </div>
 
             <!-- API Key -->
             <div class="config-section">
                 <h3>OpenRouter API Key</h3>
+                <p class="api-key-note">Your key is stored locally in this browser and never sent to any server other than OpenRouter.</p>
                 <input type="password" id="apiKey" placeholder="sk-or-..." class="text-input">
                 <button type="button" class="btn btn-ghost" id="saveApiKey">Save Key</button>
+                <label class="toggle-switch-label api-key-toggle-row">
+                    <span>Remember key</span>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="rememberKeyToggle">
+                        <span class="toggle-slider"></span>
+                    </span>
+                </label>
+                <button type="button" class="btn btn-ghost btn-danger-ghost" id="clearApiKey">Clear Key</button>
+                <label class="toggle-switch-label api-key-toggle-row">
+                    <span>Auto-retry on failure</span>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="autoRetryToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </span>
+                </label>
             </div>
         </aside>
 
@@ -118,6 +160,13 @@
                         rows="3"></textarea>
                     <div class="prompt-actions">
                         <span class="char-count" id="charCount">0 chars</span>
+                        <button type="button" class="btn btn-ghost btn-history" id="historyBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            History
+                        </button>
                         <button type="button" class="btn btn-primary" id="generateBtn">
                             Generate
                         </button>
@@ -143,7 +192,7 @@
                                 <span class="role-empty-text">Drop or click to upload</span>
                             </div>
                             <img class="role-thumb" id="sourceThumb" alt="Source preview" hidden>
-                            <button type="button" class="role-clear" id="sourceClear" title="Remove" hidden>×</button>
+                            <button type="button" class="role-clear" id="sourceClear" title="Remove" aria-label="Remove source image" hidden>&times;</button>
                         </div>
                     </div>
                     <div class="ow-slot">
@@ -155,7 +204,7 @@
                                 <span class="role-empty-text">Drop or click to upload</span>
                             </div>
                             <img class="role-thumb" id="referenceThumb" alt="Reference preview" hidden>
-                            <button type="button" class="role-clear" id="referenceClear" title="Remove" hidden>×</button>
+                            <button type="button" class="role-clear" id="referenceClear" title="Remove" aria-label="Remove reference image" hidden>&times;</button>
                         </div>
                     </div>
                 </div>
@@ -228,11 +277,11 @@
                         <div class="ow-advanced-row">
                             <label class="ow-advanced-label">Vision Analyst Model</label>
                             <div class="custom-select rich" id="visionModelContainer">
-                                <div class="custom-select-trigger" id="visionModelTrigger">
+                                <div class="custom-select-trigger" id="visionModelTrigger" role="button" aria-haspopup="listbox" aria-expanded="false" tabindex="0">
                                     <span id="visionModelValue">Gemini 2.5 Flash</span>
-                                    <span class="custom-select-arrow">▾</span>
+                                    <span class="custom-select-arrow">&#x25BE;</span>
                                 </div>
-                                <div class="custom-select-options" id="visionModelOptions">
+                                <div class="custom-select-options" id="visionModelOptions" role="listbox">
                                     <!-- Populated from VISION_MODELS in app.js -->
                                 </div>
                             </div>
@@ -290,7 +339,13 @@
             <!-- Gallery -->
             <div class="gallery-header">
                 <h2>Generated Images</h2>
+                <span class="gallery-count" id="galleryCount"></span>
                 <div class="gallery-actions">
+                    <button type="button" class="btn btn-ghost" id="exportGallery">Export Gallery</button>
+                    <label class="btn btn-ghost import-gallery-label" id="importGalleryLabel">
+                        Import Gallery
+                        <input type="file" accept=".json" id="importGalleryInput" hidden>
+                    </label>
                     <button type="button" class="btn btn-ghost" id="clearGallery">Clear Gallery</button>
                 </div>
             </div>
@@ -312,7 +367,7 @@
     <div class="modal" id="imageModal">
         <div class="modal-overlay" id="modalOverlay"></div>
         <div class="modal-content">
-            <button class="modal-close" id="modalClose">
+            <button class="modal-close" id="modalClose" aria-label="Close modal">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -350,7 +405,7 @@
         </div>
     </div>
 
-    <script src="src/app.js"></script>
+    <script type="module" src="src/app.js"></script>
 </body>
 
 </html>
