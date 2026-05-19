@@ -14,6 +14,8 @@ import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMo
 import { initTheme, toggleTheme } from './theme.js';
 import { initHistory } from './history.js';
 import { initAccessibility } from './accessibility.js';
+import { exportGallery, importGallery } from './export-import.js';
+import { initNotifications } from './notifications.js';
 
 // ===== Initialization =====
 async function init() {
@@ -79,6 +81,8 @@ async function init() {
     initHistory();
 
     initAccessibility();
+
+    initNotifications();
 
     // Auto-retry toggle
     if (elements.autoRetryToggle) {
@@ -264,6 +268,17 @@ function setupEventListeners() {
             showToast('Gallery cleared', 'success');
         }
     });
+
+    if (elements.exportGallery) {
+        elements.exportGallery.addEventListener('click', exportGallery);
+    }
+
+    if (elements.importGalleryInput) {
+        elements.importGalleryInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) importGallery(e.target.files[0]);
+            e.target.value = '';
+        });
+    }
 
     elements.modalOverlay.addEventListener('click', closeModal);
     elements.modalClose.addEventListener('click', closeModal);

@@ -88,4 +88,8 @@ export function initElements() {
 
     // Auto-retry
     elements.autoRetryToggle = document.getElementById('autoRetryToggle');
+
+    // Export/Import
+    elements.exportGallery = document.getElementById('exportGallery');
+    elements.importGalleryInput = document.getElementById('importGalleryInput');
 }

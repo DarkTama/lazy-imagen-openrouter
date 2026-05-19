@@ -2,6 +2,12 @@
  * Pure utility functions - no dependencies on other app modules.
  */
 
+let _notificationHook = null;
+
+export function setNotificationHook(fn) {
+    _notificationHook = fn;
+}
+
 export function escapeHtml(text) {
     if (text == null) return '';
     const div = document.createElement('div');
@@ -149,6 +155,8 @@ export function showToast(message, type = 'info') {
     toast.className = `toast ${type}`;
     toast.textContent = message;
     container.appendChild(toast);
+
+    if (_notificationHook) _notificationHook(message, type);
 
     setTimeout(() => {
         toast.style.animation = 'slideIn 0.3s ease reverse';
