@@ -13,6 +13,7 @@ import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependIma
 import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, enhanceGenerationModelDropdown } from './orchestrator.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { initHistory } from './history.js';
+import { initAccessibility } from './accessibility.js';
 
 // ===== Initialization =====
 async function init() {
@@ -77,6 +78,17 @@ async function init() {
 
     initHistory();
 
+    initAccessibility();
+
+    // Auto-retry toggle
+    if (elements.autoRetryToggle) {
+        elements.autoRetryToggle.checked = state.autoRetryEnabled;
+        elements.autoRetryToggle.addEventListener('change', () => {
+            state.autoRetryEnabled = elements.autoRetryToggle.checked;
+            localStorage.setItem('imagen_auto_retry', state.autoRetryEnabled ? 'true' : 'false');
+        });
+    }
+
     updateGeminiOptionsVisibility();
 
     renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
@@ -112,6 +124,8 @@ function setupEventListeners() {
 
     elements.modelSelectTrigger.addEventListener('click', () => {
         elements.modelSelectContainer.classList.toggle('open');
+        const isOpen = elements.modelSelectContainer.classList.contains('open');
+        elements.modelSelectTrigger.setAttribute('aria-expanded', String(isOpen));
     });
 
     document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(option => {
@@ -123,6 +137,7 @@ function setupEventListeners() {
             document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
             option.classList.add('selected');
             elements.modelSelectContainer.classList.remove('open');
+            elements.modelSelectTrigger.setAttribute('aria-expanded', 'false');
             updateGeminiOptionsVisibility();
             renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
             if (isMobileLayout()) closeSidebar();
@@ -132,6 +147,7 @@ function setupEventListeners() {
     document.addEventListener('click', (e) => {
         if (!elements.modelSelectContainer.contains(e.target)) {
             elements.modelSelectContainer.classList.remove('open');
+            elements.modelSelectTrigger.setAttribute('aria-expanded', 'false');
         }
     });
 
@@ -517,7 +533,18 @@ async function generateImages() {
 
     const generateAndDisplay = async (index) => {
         try {
-            const result = await generateSingleImage(prompt, modelConfig);
+            const onRetry = (attempt, delay, err) => {
+                const placeholders = document.querySelectorAll('.image-card.loading-placeholder');
+                for (const ph of placeholders) {
+                    const textEl = ph.querySelector('.loading-placeholder-text');
+                    if (textEl) {
+                        const seconds = Math.round(delay / 1000);
+                        textEl.textContent = 'Retrying in ' + seconds + 's...';
+                        break;
+                    }
+                }
+            };
+            const result = await generateSingleImage(prompt, modelConfig, { onRetry });
             if (result) {
                 const imageData = {
                     id: Date.now() + index + Math.random(),

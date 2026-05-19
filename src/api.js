@@ -4,6 +4,7 @@
 
 import { state, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MAX_CONCURRENT_GENERATIONS } from './state.js';
 import { looksLikeRefusal } from './utils.js';
+import { retryWithBackoff } from './retry.js';
 
 // ===== Structured API Error =====
 export class ApiError extends Error {
@@ -187,7 +188,8 @@ export async function researchSubject(subjectText, modelId) {
     return text.trim();
 }
 
-export async function generateSingleImage(prompt, modelConfig) {
+export async function generateSingleImage(prompt, modelConfig, { onRetry } = {}) {
+    const doGenerate = async () => {
     const content = [];
 
     if (modelConfig.supportsImageInput) {
@@ -322,6 +324,12 @@ export async function generateSingleImage(prompt, modelConfig) {
         message: 'No image in response',
         body: JSON.stringify(data, null, 2)
     });
+    };
+
+    if (state.autoRetryEnabled) {
+        return retryWithBackoff(doGenerate, { onRetry });
+    }
+    return doGenerate();
 }
 
 export async function fetchModelPricing() {

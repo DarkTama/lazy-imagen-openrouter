@@ -2627,3 +2627,65 @@ body.orchestrator-active #promptInput::after {
 .history-delete:hover {
     color: var(--error);
 }
+
+/* ===== Skip Link ===== */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    padding: 8px 16px;
+    z-index: 10000;
+    transition: top 0.2s;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* ===== Compression Overlay ===== */
+.ow-dropzone.compressing {
+    position: relative;
+    pointer-events: none;
+}
+
+.compress-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: var(--border-radius-sm);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    z-index: 5;
+}
+
+.compress-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ===== Accessibility: Custom select keyboard highlight ===== */
+.custom-select-option.data-highlighted {
+    background: var(--bg-hover);
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+}

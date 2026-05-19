@@ -19,6 +19,7 @@ export function setupOrchestrator() {
         const opt = document.createElement('div');
         opt.className = 'custom-select-option';
         opt.dataset.value = m.id;
+        opt.setAttribute('role', 'option');
         if (m.id === o.visionModel) opt.classList.add('selected');
         const name = document.createElement('span');
         name.className = 'option-name';
@@ -212,9 +213,16 @@ export function clearRoleThumb(role) {
 export async function setRoleImage(role, file) {
     if (!file || !file.type.startsWith('image/')) return;
     const isLarge = file.size > LARGE_IMAGE_THRESHOLD_BYTES;
+    const zone = role === 'source' ? elements.sourceDropzone : elements.referenceDropzone;
     let dataUri;
 
     if (isLarge && state.orchestrator.autoCompress) {
+        // Show compression overlay
+        zone.classList.add('compressing');
+        const overlay = document.createElement('div');
+        overlay.className = 'compress-overlay';
+        overlay.innerHTML = '<div class="compress-spinner"></div><span>Compressing...</span>';
+        zone.appendChild(overlay);
         try {
             dataUri = await compressImageFile(file);
             const beforeKB = Math.round(file.size / 1024);
@@ -224,6 +232,10 @@ export async function setRoleImage(role, file) {
             console.error('Compression failed:', err);
             dataUri = await readFileAsDataURI(file);
             showToast('Could not compress — using original (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)', 'warning');
+        } finally {
+            zone.classList.remove('compressing');
+            const existingOverlay = zone.querySelector('.compress-overlay');
+            if (existingOverlay) existingOverlay.remove();
         }
     } else {
         dataUri = await readFileAsDataURI(file);
@@ -343,6 +355,8 @@ export function setupOrchestratorEventListeners(generateImages) {
 
     elements.visionModelTrigger.addEventListener('click', () => {
         elements.visionModelContainer.classList.toggle('open');
+        const isOpen = elements.visionModelContainer.classList.contains('open');
+        elements.visionModelTrigger.setAttribute('aria-expanded', String(isOpen));
     });
     elements.visionModelOptions.addEventListener('click', (e) => {
         const opt = e.target.closest('.custom-select-option');
@@ -354,12 +368,14 @@ export function setupOrchestratorEventListeners(generateImages) {
         const meta = VISION_MODELS_BY_ID[id];
         elements.visionModelValue.textContent = meta?.name || id;
         elements.visionModelContainer.classList.remove('open');
+        elements.visionModelTrigger.setAttribute('aria-expanded', 'false');
         renderVisionModelChip();
         saveOrchestratorState();
     });
     document.addEventListener('click', (e) => {
         if (!elements.visionModelContainer.contains(e.target)) {
             elements.visionModelContainer.classList.remove('open');
+            elements.visionModelTrigger.setAttribute('aria-expanded', 'false');
         }
     });
 

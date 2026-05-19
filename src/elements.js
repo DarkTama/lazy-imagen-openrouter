@@ -85,4 +85,7 @@ export function initElements() {
 
     // History
     elements.historyBtn = document.getElementById('historyBtn');
+
+    // Auto-retry
+    elements.autoRetryToggle = document.getElementById('autoRetryToggle');
 }

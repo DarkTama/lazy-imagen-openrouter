@@ -226,6 +226,7 @@ export const state = {
     imageQuality: localStorage.getItem('imagen_quality') || '1K',
     aspectRatio: localStorage.getItem('imagen_aspect_ratio') || '1:1',
     imageCount: parseInt(localStorage.getItem('imagen_count')) || 1,
+    autoRetryEnabled: localStorage.getItem('imagen_auto_retry') !== 'false',
     references: [],
     referenceLabels: null,
     images: [],
