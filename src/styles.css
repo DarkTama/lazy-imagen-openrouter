@@ -504,6 +504,34 @@ body {
     color: var(--text-primary);
 }
 
+.btn-danger-ghost {
+    color: var(--error);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger-ghost:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error);
+    border-color: var(--error);
+}
+
+.api-key-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.api-key-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
 /* ===== Main Content ===== */
 .main-content {
     flex: 1;

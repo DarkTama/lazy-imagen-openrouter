@@ -113,8 +113,17 @@
             <!-- API Key -->
             <div class="config-section">
                 <h3>OpenRouter API Key</h3>
+                <p class="api-key-note">Your key is stored locally in this browser and never sent to any server other than OpenRouter.</p>
                 <input type="password" id="apiKey" placeholder="sk-or-..." class="text-input">
                 <button type="button" class="btn btn-ghost" id="saveApiKey">Save Key</button>
+                <label class="toggle-switch-label api-key-toggle-row">
+                    <span>Remember key</span>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="rememberKeyToggle">
+                        <span class="toggle-slider"></span>
+                    </span>
+                </label>
+                <button type="button" class="btn btn-ghost btn-danger-ghost" id="clearApiKey">Clear Key</button>
             </div>
         </aside>
 

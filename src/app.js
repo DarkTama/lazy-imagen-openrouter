@@ -273,7 +273,8 @@ async function hydrateOrchestratorImages() {
 }
 
 const state = {
-    apiKey: localStorage.getItem('imagen_api_key') || '',
+    apiKey: localStorage.getItem('imagen_api_key') || sessionStorage.getItem('imagen_api_key') || '',
+    rememberKey: localStorage.getItem('imagen_remember_key') !== 'false',
     selectedModel: localStorage.getItem('imagen_model') || 'google/gemini-2.5-flash-image',
     imageSize: localStorage.getItem('imagen_size') || '1024x1024',
     imageQuality: localStorage.getItem('imagen_quality') || '1K',
@@ -459,6 +460,8 @@ const elements = {
     geminiOptions: document.getElementById('geminiOptions'),
     apiKey: document.getElementById('apiKey'),
     saveApiKey: document.getElementById('saveApiKey'),
+    clearApiKey: document.getElementById('clearApiKey'),
+    rememberKeyToggle: document.getElementById('rememberKeyToggle'),
     imageCount: document.getElementById('imageCount'),
     decreaseCount: document.getElementById('decreaseCount'),
     increaseCount: document.getElementById('increaseCount'),
@@ -530,6 +533,9 @@ async function init() {
     if (state.apiKey) {
         elements.apiKey.value = state.apiKey;
     }
+
+    // Restore remember key toggle state
+    elements.rememberKeyToggle.checked = state.rememberKey;
 
     // Render reference slots
     renderReferenceSlots();
@@ -1255,9 +1261,42 @@ function setupEventListeners() {
     // API Key
     elements.saveApiKey.addEventListener('click', () => {
         state.apiKey = elements.apiKey.value.trim();
-        localStorage.setItem('imagen_api_key', state.apiKey);
+        if (state.rememberKey) {
+            localStorage.setItem('imagen_api_key', state.apiKey);
+            sessionStorage.removeItem('imagen_api_key');
+        } else {
+            sessionStorage.setItem('imagen_api_key', state.apiKey);
+            localStorage.removeItem('imagen_api_key');
+        }
         showToast('API key saved!', 'success');
         if (isMobileLayout()) closeSidebar();
+    });
+
+    // Remember key toggle
+    elements.rememberKeyToggle.addEventListener('change', () => {
+        state.rememberKey = elements.rememberKeyToggle.checked;
+        localStorage.setItem('imagen_remember_key', state.rememberKey ? 'true' : 'false');
+        // Migrate existing key between storages
+        if (state.apiKey) {
+            if (state.rememberKey) {
+                localStorage.setItem('imagen_api_key', state.apiKey);
+                sessionStorage.removeItem('imagen_api_key');
+            } else {
+                sessionStorage.setItem('imagen_api_key', state.apiKey);
+                localStorage.removeItem('imagen_api_key');
+            }
+        }
+    });
+
+    // Clear API key
+    elements.clearApiKey.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear your API key?')) {
+            localStorage.removeItem('imagen_api_key');
+            sessionStorage.removeItem('imagen_api_key');
+            state.apiKey = '';
+            elements.apiKey.value = '';
+            showToast('API key cleared', 'success');
+        }
     });
 
     // Reference images are handled by renderReferenceSlots()
