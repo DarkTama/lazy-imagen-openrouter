@@ -562,6 +562,17 @@ body {
 .char-count {
     font-size: 0.8rem;
     color: var(--text-muted);
+    transition: color 0.2s;
+}
+
+.char-count-warn {
+    color: #f59e0b;
+    font-weight: 500;
+}
+
+.char-count-over {
+    color: #ef4444;
+    font-weight: 600;
 }
 
 .btn-icon {

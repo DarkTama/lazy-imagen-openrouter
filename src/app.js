@@ -7,11 +7,12 @@
 const ImagenDB = {
     dbName: 'ImagenDB',
     storeName: 'images',
+    orchestratorStoreName: 'orchestratorBlobs',
     db: null,
 
     async open() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, 1);
+            const request = indexedDB.open(this.dbName, 2);
 
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
@@ -24,6 +25,9 @@ const ImagenDB = {
                 if (!db.objectStoreNames.contains(this.storeName)) {
                     const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
                     store.createIndex('createdAt', 'createdAt', { unique: false });
+                }
+                if (!db.objectStoreNames.contains(this.orchestratorStoreName)) {
+                    db.createObjectStore(this.orchestratorStoreName, { keyPath: 'key' });
                 }
             };
         });
@@ -83,6 +87,40 @@ const ImagenDB = {
         if (!this.db) {
             await this.open();
         }
+    },
+
+    // --- Orchestrator blob storage (source/reference images) ---
+    async saveOrchestratorBlob(key, dataUri) {
+        await this.ensureOpen();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.orchestratorStoreName], 'readwrite');
+            const store = tx.objectStore(this.orchestratorStoreName);
+            const request = store.put({ key, dataUri });
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async getOrchestratorBlob(key) {
+        await this.ensureOpen();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.orchestratorStoreName], 'readonly');
+            const store = tx.objectStore(this.orchestratorStoreName);
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result?.dataUri || null);
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async deleteOrchestratorBlob(key) {
+        await this.ensureOpen();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.orchestratorStoreName], 'readwrite');
+            const store = tx.objectStore(this.orchestratorStoreName);
+            const request = store.delete(key);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
     }
 };
 
@@ -173,6 +211,8 @@ function loadOrchestratorState() {
         const raw = localStorage.getItem('imagen_orchestrator');
         if (!raw) return { ...ORCHESTRATOR_DEFAULTS, transfers: { ...ORCHESTRATOR_DEFAULTS.transfers } };
         const parsed = JSON.parse(raw);
+        // Images are now in IndexedDB — they'll be hydrated asynchronously after init.
+        // Support migration: if localStorage still has images (from before this change), use them.
         return {
             ...ORCHESTRATOR_DEFAULTS,
             ...parsed,
@@ -182,6 +222,54 @@ function loadOrchestratorState() {
         console.warn('Failed to load orchestrator state:', e);
         return { ...ORCHESTRATOR_DEFAULTS, transfers: { ...ORCHESTRATOR_DEFAULTS.transfers } };
     }
+}
+
+// Hydrate orchestrator images from IndexedDB (async, called after DB is ready).
+// Also handles migration from old localStorage format where images were inline.
+async function hydrateOrchestratorImages() {
+    const o = state.orchestrator;
+
+    // Migration: if images are still in localStorage (old format), move them to IndexedDB
+    try {
+        const raw = localStorage.getItem('imagen_orchestrator');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.sourceImage) {
+                await ImagenDB.saveOrchestratorBlob('sourceImage', parsed.sourceImage);
+                o.sourceImage = parsed.sourceImage;
+            }
+            if (parsed.referenceImage) {
+                await ImagenDB.saveOrchestratorBlob('referenceImage', parsed.referenceImage);
+                o.referenceImage = parsed.referenceImage;
+            }
+            // Re-save without images to free localStorage space
+            if (parsed.sourceImage || parsed.referenceImage) {
+                const cleaned = { ...parsed };
+                delete cleaned.sourceImage;
+                delete cleaned.referenceImage;
+                localStorage.setItem('imagen_orchestrator', JSON.stringify(cleaned));
+            }
+        }
+    } catch (e) {
+        console.warn('Migration from localStorage failed:', e);
+    }
+
+    // Load from IndexedDB if not already set by migration
+    try {
+        if (!o.sourceImage) {
+            o.sourceImage = await ImagenDB.getOrchestratorBlob('sourceImage');
+        }
+        if (!o.referenceImage) {
+            o.referenceImage = await ImagenDB.getOrchestratorBlob('referenceImage');
+        }
+    } catch (e) {
+        console.warn('Failed to load orchestrator images from IndexedDB:', e);
+    }
+
+    // Render thumbnails if images were loaded
+    if (o.sourceImage) renderRoleThumb('source', o.sourceImage);
+    if (o.referenceImage) renderRoleThumb('reference', o.referenceImage);
+    updateToggleDiffs();
 }
 
 const state = {
@@ -202,11 +290,31 @@ const state = {
 
 function saveOrchestratorState() {
     try {
-        localStorage.setItem('imagen_orchestrator', JSON.stringify(state.orchestrator));
+        // Store images in IndexedDB (non-blocking) to avoid localStorage quota issues
+        const o = state.orchestrator;
+        if (o.sourceImage) {
+            ImagenDB.saveOrchestratorBlob('sourceImage', o.sourceImage).catch(e =>
+                console.warn('Failed to save source image to IndexedDB:', e)
+            );
+        } else {
+            ImagenDB.deleteOrchestratorBlob('sourceImage').catch(() => {});
+        }
+        if (o.referenceImage) {
+            ImagenDB.saveOrchestratorBlob('referenceImage', o.referenceImage).catch(e =>
+                console.warn('Failed to save reference image to IndexedDB:', e)
+            );
+        } else {
+            ImagenDB.deleteOrchestratorBlob('referenceImage').catch(() => {});
+        }
+
+        // Save everything EXCEPT the large image blobs to localStorage
+        const toSave = { ...o };
+        delete toSave.sourceImage;
+        delete toSave.referenceImage;
+        localStorage.setItem('imagen_orchestrator', JSON.stringify(toSave));
     } catch (e) {
-        // Most likely quota exceeded — base64 images can blow past localStorage's ~5MB limit.
-        console.warn('Failed to persist orchestrator state (quota?):', e);
-        showToast('Could not save orchestrator state — uploaded images may be too large for browser storage.', 'warning');
+        console.warn('Failed to persist orchestrator state:', e);
+        showToast('Could not save orchestrator state.', 'warning');
     }
 }
 
@@ -464,6 +572,10 @@ async function init() {
         state.images = [];
     }
 
+    // Hydrate orchestrator source/reference images from IndexedDB
+    // (handles migration from old localStorage format too)
+    await hydrateOrchestratorImages();
+
     // Render gallery
     renderGallery();
 
@@ -646,14 +758,36 @@ function updateToggleDiffs() {
         const diff = cell.querySelector('.ow-diff');
         if (!diff) return;
 
-        const srcThumb = src
-            ? `<div class="ow-diff-thumb ${checked ? 'dimmed' : 'chosen'}" style="background-image:url('${src}')" title="Source"></div>`
-            : `<div class="ow-diff-thumb placeholder" title="No source uploaded"></div>`;
-        const refThumb = ref
-            ? `<div class="ow-diff-thumb ${checked ? 'chosen' : 'dimmed'}" style="background-image:url('${ref}')" title="Reference"></div>`
-            : `<div class="ow-diff-thumb placeholder" title="No reference uploaded"></div>`;
+        // Build diff thumbs via DOM API to avoid injecting data URIs into innerHTML
+        diff.textContent = '';
 
-        diff.innerHTML = `${srcThumb}<span class="ow-diff-arrow">→</span>${refThumb}`;
+        const srcEl = document.createElement('div');
+        srcEl.title = 'Source';
+        if (src && sanitizeImageUrl(src)) {
+            srcEl.className = `ow-diff-thumb ${checked ? 'dimmed' : 'chosen'}`;
+            srcEl.style.backgroundImage = `url('${sanitizeImageUrl(src)}')`;
+        } else {
+            srcEl.className = 'ow-diff-thumb placeholder';
+            srcEl.title = 'No source uploaded';
+        }
+
+        const arrow = document.createElement('span');
+        arrow.className = 'ow-diff-arrow';
+        arrow.textContent = '\u2192';
+
+        const refEl = document.createElement('div');
+        refEl.title = 'Reference';
+        if (ref && sanitizeImageUrl(ref)) {
+            refEl.className = `ow-diff-thumb ${checked ? 'chosen' : 'dimmed'}`;
+            refEl.style.backgroundImage = `url('${sanitizeImageUrl(ref)}')`;
+        } else {
+            refEl.className = 'ow-diff-thumb placeholder';
+            refEl.title = 'No reference uploaded';
+        }
+
+        diff.appendChild(srcEl);
+        diff.appendChild(arrow);
+        diff.appendChild(refEl);
     });
 }
 
@@ -1087,7 +1221,9 @@ function setupEventListeners() {
 
     // Prompt input
     elements.promptInput.addEventListener('input', () => {
-        elements.charCount.textContent = `${elements.promptInput.value.length} chars`;
+        const len = elements.promptInput.value.length;
+        elements.charCount.textContent = `${len} chars`;
+        updatePromptLengthWarning(len);
     });
 
     // Generate button
@@ -1249,15 +1385,22 @@ function renderReferenceSlots() {
         const slot = document.createElement('div');
         slot.className = 'reference-slot filled';
         slot.dataset.slot = index;
-        slot.innerHTML = `
-            <img src="${ref}" alt="Reference ${index + 1}">
-            <button class="remove-ref" data-index="${index}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
+
+        const img = document.createElement('img');
+        img.src = sanitizeImageUrl(ref);
+        img.alt = `Reference ${index + 1}`;
+        slot.appendChild(img);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove-ref';
+        removeBtn.dataset.index = index;
+        removeBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
         `;
+        slot.appendChild(removeBtn);
         container.appendChild(slot);
     });
 
@@ -2113,15 +2256,15 @@ async function generateImages() {
         }
     };
 
-    // Start all generations in parallel, each will render when done
+    // Start generations with concurrency limit (max 3 in-flight)
     if (orchestratorActiveAtStart) setGenerateButtonLoading(true);
-    const promises = [];
+    const tasks = [];
     for (let i = 0; i < imageCount; i++) {
-        promises.push(generateAndDisplay(i));
+        tasks.push(() => generateAndDisplay(i));
     }
 
-    // Wait for all to complete to update final UI state
-    await Promise.allSettled(promises);
+    // Run with concurrency limit — resolves when all tasks complete
+    await runWithConcurrency(tasks, MAX_CONCURRENT_GENERATIONS);
     if (orchestratorActiveAtStart) setGenerateButtonLoading(false);
 
     // Remove this batch from pending
@@ -2865,6 +3008,75 @@ function downloadCurrentImage() {
 function updateGeminiOptionsVisibility() {
     const isGemini = state.selectedModel.includes('gemini');
     elements.geminiOptions.style.display = isGemini ? 'flex' : 'none';
+}
+
+// ===== Prompt Length Warning =====
+// Soft character-limit per model (approximate; tokens ≈ chars / 4).
+const MODEL_PROMPT_CHAR_LIMITS = {
+    'google/gemini-2.5-flash-image': 30000,
+    'google/gemini-3.1-flash-image-preview': 30000,
+    'google/gemini-3-pro-image-preview': 30000,
+    'openai/gpt-5-image': 16000,
+    'openai/gpt-5-image-mini': 16000,
+    'openai/gpt-5.4-image-2': 16000,
+    'openrouter/auto': 16000
+};
+const DEFAULT_PROMPT_CHAR_LIMIT = 16000;
+const PROMPT_WARN_THRESHOLD = 0.85; // warn at 85% of limit
+
+function getPromptCharLimit() {
+    return MODEL_PROMPT_CHAR_LIMITS[state.selectedModel] || DEFAULT_PROMPT_CHAR_LIMIT;
+}
+
+function updatePromptLengthWarning(len) {
+    const limit = getPromptCharLimit();
+    const warnAt = Math.floor(limit * PROMPT_WARN_THRESHOLD);
+
+    if (len > limit) {
+        elements.charCount.classList.add('char-count-over');
+        elements.charCount.classList.remove('char-count-warn');
+        elements.charCount.textContent = `${len} / ${limit} chars — may be truncated`;
+    } else if (len > warnAt) {
+        elements.charCount.classList.add('char-count-warn');
+        elements.charCount.classList.remove('char-count-over');
+        elements.charCount.textContent = `${len} / ${limit} chars`;
+    } else {
+        elements.charCount.classList.remove('char-count-warn', 'char-count-over');
+        elements.charCount.textContent = `${len} chars`;
+    }
+}
+
+// ===== Concurrency Limiter =====
+// Runs an array of async factory functions with at most `limit` in parallel.
+// Returns a Promise that resolves when all tasks complete (like Promise.allSettled).
+const MAX_CONCURRENT_GENERATIONS = 3;
+
+function runWithConcurrency(tasks, limit = MAX_CONCURRENT_GENERATIONS) {
+    const results = [];
+    let index = 0;
+    let active = 0;
+
+    return new Promise(resolve => {
+        function next() {
+            if (index >= tasks.length && active === 0) {
+                resolve(results);
+                return;
+            }
+            while (active < limit && index < tasks.length) {
+                const i = index++;
+                active++;
+                tasks[i]().then(val => {
+                    results[i] = { status: 'fulfilled', value: val };
+                }).catch(err => {
+                    results[i] = { status: 'rejected', reason: err };
+                }).finally(() => {
+                    active--;
+                    next();
+                });
+            }
+        }
+        next();
+    });
 }
 
 function showToast(message, type = 'info') {
