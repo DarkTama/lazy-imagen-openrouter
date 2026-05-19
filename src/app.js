@@ -274,7 +274,7 @@ async function hydrateOrchestratorImages() {
 
 const state = {
     apiKey: localStorage.getItem('imagen_api_key') || sessionStorage.getItem('imagen_api_key') || '',
-    rememberKey: localStorage.getItem('imagen_remember_key') !== 'false',
+    rememberKey: localStorage.getItem('imagen_remember_key') === 'true',
     selectedModel: localStorage.getItem('imagen_model') || 'google/gemini-2.5-flash-image',
     imageSize: localStorage.getItem('imagen_size') || '1024x1024',
     imageQuality: localStorage.getItem('imagen_quality') || '1K',
@@ -1137,6 +1137,11 @@ function setupOrchestratorEventListeners() {
 
 // ===== Sidebar Drawer (Mobile/Tablet) =====
 function createSidebarOverlay() {
+    const existing = document.querySelector('.sidebar-overlay');
+    if (existing) {
+        elements.sidebarOverlay = existing;
+        return;
+    }
     const overlay = document.createElement('div');
     overlay.className = 'sidebar-overlay';
     document.querySelector('.app-container').appendChild(overlay);
@@ -1175,6 +1180,14 @@ function setupEventListeners() {
     if (elements.sidebarOverlay) {
         elements.sidebarOverlay.addEventListener('click', closeSidebar);
     }
+
+    // Close sidebar when transitioning from mobile to desktop layout
+    const desktopQuery = window.matchMedia('(min-width: 1025px)');
+    desktopQuery.addEventListener('change', (e) => {
+        if (e.matches) {
+            closeSidebar();
+        }
+    });
 
     // Custom dropdown - toggle
     elements.modelSelectTrigger.addEventListener('click', () => {
@@ -2692,8 +2705,31 @@ function renderGallery() {
 
 // ===== Gallery Pagination =====
 function loadMoreGallery() {
+    const prevCount = state.galleryDisplayedCount;
     state.galleryDisplayedCount += state.galleryPageSize;
-    renderGallery();
+
+    // Remove existing "Load more" button
+    const existingBtn = elements.gallery.querySelector('.gallery-load-more');
+    if (existingBtn) existingBtn.remove();
+
+    // Append only the new page of cards
+    const nextPage = state.images.slice(prevCount, state.galleryDisplayedCount);
+    nextPage.forEach((image) => {
+        const card = createImageCardElement(image, state.images.indexOf(image));
+        card.addEventListener('click', () => openModal(image));
+        elements.gallery.appendChild(card);
+    });
+
+    // Re-add "Load more" button if there are still more images
+    if (state.images.length > state.galleryDisplayedCount) {
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.className = 'gallery-load-more';
+        loadMoreBtn.textContent = 'Load more';
+        loadMoreBtn.addEventListener('click', loadMoreGallery);
+        elements.gallery.appendChild(loadMoreBtn);
+    }
+
+    updateGalleryCount();
 }
 
 function updateGalleryCount() {
