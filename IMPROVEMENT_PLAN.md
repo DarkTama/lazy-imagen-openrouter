@@ -79,7 +79,7 @@ Several places use `innerHTML` with dynamically generated content. While `escape
 ---
 
 ### 2.2 Improve API Key Handling
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low  
 
@@ -113,7 +113,7 @@ Add a soft warning when the assembled/manual prompt exceeds model-specific token
 ## 3. UX & Accessibility
 
 ### 3.1 Responsive / Mobile Layout
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** Medium  
 
@@ -200,7 +200,7 @@ Orchestrator state (including base64 source/reference images) is stored in `loca
 ---
 
 ### 4.2 Gallery Pagination / Lazy Loading
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** Low–Medium  
 
@@ -364,12 +364,12 @@ When generation fails with transient errors (429, 5xx), users must manually retr
 | 2.3 | Prompt length validation | Medium | Low | ✅ |
 | 4.1 | Orchestrator images → IndexedDB | High | Low–Med | ✅ |
 | 4.3 | Concurrency limit | Medium | Low | ✅ |
-| 4.2 | Gallery pagination | High | Low–Med | ⬜ |
-| 3.1 | Responsive layout | High | Medium | ⬜ |
+| 4.2 | Gallery pagination | High | Low–Med | ✅ |
+| 3.1 | Responsive layout | High | Medium | ✅ |
 | 1.1 | Split into modules | High | High | ⬜ |
 | 3.2 | Accessibility | Medium | Medium | ⬜ |
 | 5.1 | Linting & formatting | Medium | Low | ⬜ |
-| 2.2 | API key handling | Medium | Low | ⬜ |
+| 2.2 | API key handling | Medium | Low | ✅ |
 | 6.2 | Prompt history | Medium | Low–Med | ⬜ |
 | 6.1 | Export/Import gallery | Medium | Medium | ⬜ |
 | 5.2 | Tests | Medium | Medium | ⬜ |
