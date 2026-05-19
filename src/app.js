@@ -2716,7 +2716,6 @@ function loadMoreGallery() {
     const nextPage = state.images.slice(prevCount, state.galleryDisplayedCount);
     nextPage.forEach((image) => {
         const card = createImageCardElement(image, state.images.indexOf(image));
-        card.addEventListener('click', () => openModal(image));
         elements.gallery.appendChild(card);
     });
 
