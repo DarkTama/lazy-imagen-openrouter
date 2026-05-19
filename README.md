@@ -283,6 +283,61 @@ lazy-imagen-openrouter/
 └── README.md       # This file — full user guide
 ```
 
+## 🛠️ Development
+
+### Prerequisites
+
+- Node.js 18+
+- npm 9+
+
+### Getting Started
+
+```bash
+npm install        # Install dev dependencies
+npm run dev        # Start Vite dev server with hot-reload
+npm run build      # Production build to dist/
+npm run preview    # Preview the production build locally
+npm test           # Run test suite (Vitest)
+npm run test:watch # Run tests in watch mode
+npm run lint       # Lint source files
+npm run lint:fix   # Auto-fix lint issues
+npm run format     # Format with Prettier
+```
+
+### Architecture
+
+All source code lives in `src/` as ES modules with no runtime dependencies:
+
+| Module | Responsibility |
+|--------|---------------|
+| `app.js` | Entry point, module initialization, event wiring |
+| `orchestrator.js` | Orchestrator mode: prompt assembly, error classification |
+| `api.js` | OpenRouter API fetch wrappers |
+| `retry.js` | Exponential backoff retry utility |
+| `utils.js` | Pure utilities (escapeHtml, debounce, sanitizeImageUrl, etc.) |
+| `state.js` | Constants, model configs, shared state |
+| `elements.js` | Cached DOM references |
+| `db.js` | IndexedDB wrapper for image persistence |
+| `ui.js` | Sidebar, modal, layout helpers |
+| `gallery.js` | Gallery rendering and management |
+| `history.js` | Prompt history with favorites |
+| `notifications.js` | Notification history |
+| `export-import.js` | Gallery export/import |
+| `accessibility.js` | ARIA patterns, keyboard navigation |
+| `theme.js` | Dark/light theme toggle |
+
+### Browser Requirements
+
+The app relies on modern web APIs:
+
+- ES modules (`<script type="module">`)
+- IndexedDB (image persistence)
+- Clipboard API (copy prompt/image)
+- CSS custom properties (theming)
+- Optional chaining and nullish coalescing (ES2020)
+
+Supported browsers: Chrome 90+, Firefox 90+, Edge 90+, Safari 15+.
+
 ## 📜 License
 
 This project is licensed under the **GNU General Public License v3.0** (GPL-3.0).
