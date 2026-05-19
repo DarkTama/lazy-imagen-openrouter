@@ -285,6 +285,8 @@ const state = {
     currentImage: null,
     pendingBatches: [], // Track pending generation batches { id, prompt, count, completed, failed }
     modelPricing: {}, // { 'model/id': { prompt, completion, image, request } } — enriched from /api/v1/models
+    galleryPageSize: 20,
+    galleryDisplayedCount: 20,
     orchestrator: loadOrchestratorState()
 };
 
@@ -1233,6 +1235,7 @@ function setupEventListeners() {
     elements.clearGallery.addEventListener('click', async () => {
         if (confirm('Are you sure you want to clear all generated images?')) {
             state.images = [];
+            state.galleryDisplayedCount = state.galleryPageSize;
             try {
                 await ImagenDB.clearAll();
             } catch (e) {
@@ -2499,8 +2502,9 @@ function renderGallery() {
         }
     });
 
-    // Render existing images
-    state.images.forEach((image, index) => {
+    // Render existing images (paginated)
+    const imagesToShow = state.images.slice(0, state.galleryDisplayedCount);
+    imagesToShow.forEach((image, index) => {
         const card = document.createElement('div');
         card.className = 'image-card';
 
@@ -2585,6 +2589,36 @@ function renderGallery() {
         card.addEventListener('click', () => openModal(image));
         elements.gallery.appendChild(card);
     });
+
+    // Add "Load more" button if there are more images to show
+    if (state.images.length > state.galleryDisplayedCount) {
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.className = 'gallery-load-more';
+        loadMoreBtn.textContent = 'Load more';
+        loadMoreBtn.addEventListener('click', loadMoreGallery);
+        elements.gallery.appendChild(loadMoreBtn);
+    }
+
+    // Update gallery count indicator
+    updateGalleryCount();
+}
+
+// ===== Gallery Pagination =====
+function loadMoreGallery() {
+    state.galleryDisplayedCount += state.galleryPageSize;
+    renderGallery();
+}
+
+function updateGalleryCount() {
+    const countEl = document.getElementById('galleryCount');
+    if (!countEl) return;
+    const total = state.images.length;
+    if (total === 0) {
+        countEl.textContent = '';
+        return;
+    }
+    const showing = Math.min(state.galleryDisplayedCount, total);
+    countEl.textContent = `Showing ${showing} of ${total}`;
 }
 
 // ===== Incremental Gallery Updates =====
@@ -2660,6 +2694,9 @@ function prependImageCard(image, index) {
     
     // Update indices on existing cards since we prepended
     updateCardIndices();
+
+    // Update gallery count indicator
+    updateGalleryCount();
 }
 
 function createImageCardElement(image, index) {
@@ -2782,6 +2819,9 @@ async function deleteImage(index) {
         }
     }
     
+    // Update gallery count indicator
+    updateGalleryCount();
+
     showToast('Image deleted', 'success');
 }
 

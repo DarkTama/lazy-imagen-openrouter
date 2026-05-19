@@ -727,6 +727,33 @@ body {
     margin-top: 4px;
 }
 
+.gallery-count {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-left: auto;
+    margin-right: 12px;
+}
+
+.gallery-load-more {
+    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
+    padding: 12px 24px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    text-align: center;
+}
+
+.gallery-load-more:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
 /* ===== Image Card ===== */
 .image-card {
     background: var(--bg-card);
