@@ -1,0 +1,20 @@
+{
+  "name": "lazy-imagen-openrouter",
+  "version": "1.0.0",
+  "description": "AI image generation tool using OpenRouter API with orchestrator mode",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.js\" \"*.html\""
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "prettier": "^3.0.0"
+  },
+  "keywords": ["image-generation", "openrouter", "ai"],
+  "license": "MIT",
+  "private": true
+}

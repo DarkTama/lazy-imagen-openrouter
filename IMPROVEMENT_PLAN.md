@@ -20,7 +20,7 @@
 ## 1. Architecture & Code Organization
 
 ### 1.1 Split `app.js` into ES Modules
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** High  
 **Effort:** High  
 
@@ -28,16 +28,16 @@
 The monolithic `app.js` (~2,900+ lines) handles DB, state management, UI rendering, API calls, and orchestrator logic in a single file. Split into focused modules for maintainability.
 
 **Steps:**
-- [ ] Create module structure: `db.js`, `state.js`, `api.js`, `orchestrator.js`, `ui.js`, `gallery.js`, `utils.js`
-- [ ] Extract IndexedDB wrapper (`ImagenDB`) into `db.js`
-- [ ] Extract state management and defaults into `state.js`
-- [ ] Extract API communication (fetch calls, error handling) into `api.js`
-- [ ] Extract orchestrator logic into `orchestrator.js`
-- [ ] Extract UI helpers (toasts, modals, DOM manipulation) into `ui.js`
-- [ ] Extract gallery rendering into `gallery.js`
-- [ ] Extract shared utilities (`escapeHtml`, `debounce`, etc.) into `utils.js`
-- [ ] Update `index.html` to use `<script type="module">`
-- [ ] Verify all functionality works after split
+- [x] Create module structure: `db.js`, `state.js`, `api.js`, `orchestrator.js`, `ui.js`, `gallery.js`, `utils.js`
+- [x] Extract IndexedDB wrapper (`ImagenDB`) into `db.js`
+- [x] Extract state management and defaults into `state.js`
+- [x] Extract API communication (fetch calls, error handling) into `api.js`
+- [x] Extract orchestrator logic into `orchestrator.js`
+- [x] Extract UI helpers (toasts, modals, DOM manipulation) into `ui.js`
+- [x] Extract gallery rendering into `gallery.js`
+- [x] Extract shared utilities (`escapeHtml`, `debounce`, etc.) into `utils.js`
+- [x] Update `index.html` to use `<script type="module">`
+- [x] Verify all functionality works after split
 
 ---
 
@@ -235,7 +235,7 @@ Requesting multiple images fires all API calls simultaneously, risking rate limi
 ## 5. Quality & Developer Experience
 
 ### 5.1 Add Linting & Formatting
-**Status:** ⬜ Not Started  
+**Status:** ✅ Done  
 **Priority:** Medium  
 **Effort:** Low  
 
@@ -243,9 +243,9 @@ Requesting multiple images fires all API calls simultaneously, risking rate limi
 No consistent code style enforcement. Add ESLint + Prettier.
 
 **Steps:**
-- [ ] Add `.eslintrc.json` with recommended rules
-- [ ] Add `.prettierrc` with project style preferences
-- [ ] Add npm scripts: `lint`, `lint:fix`, `format`
+- [x] Add `.eslintrc.json` with recommended rules
+- [x] Add `.prettierrc` with project style preferences
+- [x] Add npm scripts: `lint`, `lint:fix`, `format`
 - [ ] Fix existing lint errors/warnings
 - [ ] Optionally add a pre-commit hook (husky + lint-staged)
 
@@ -366,9 +366,9 @@ When generation fails with transient errors (429, 5xx), users must manually retr
 | 4.3 | Concurrency limit | Medium | Low | ✅ |
 | 4.2 | Gallery pagination | High | Low–Med | ✅ |
 | 3.1 | Responsive layout | High | Medium | ✅ |
-| 1.1 | Split into modules | High | High | ⬜ |
+| 1.1 | Split into modules | High | High | ✅ |
 | 3.2 | Accessibility | Medium | Medium | ⬜ |
-| 5.1 | Linting & formatting | Medium | Low | ⬜ |
+| 5.1 | Linting & formatting | Medium | Low | ✅ |
 | 2.2 | API key handling | Medium | Low | ✅ |
 | 6.2 | Prompt history | Medium | Low–Med | ⬜ |
 | 6.1 | Export/Import gallery | Medium | Medium | ⬜ |
