@@ -6,12 +6,17 @@
 import { setNotificationHook } from './utils.js';
 
 const MAX_NOTIFICATIONS = 50;
+const MAX_MESSAGE_LENGTH = 200;
 let notifications = [];
 
 export function addNotification(message, type) {
+    let truncatedMessage = String(message || '');
+    if (truncatedMessage.length > MAX_MESSAGE_LENGTH) {
+        truncatedMessage = truncatedMessage.substring(0, MAX_MESSAGE_LENGTH) + '...';
+    }
     const entry = {
         id: Date.now() + Math.random(),
-        message: message,
+        message: truncatedMessage,
         type: type || 'info',
         timestamp: new Date().toISOString(),
         read: false

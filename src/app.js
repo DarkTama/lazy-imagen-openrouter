@@ -549,7 +549,7 @@ async function generateImages() {
     const generateAndDisplay = async (index) => {
         try {
             const onRetry = (attempt, delay, err) => {
-                const placeholders = document.querySelectorAll('.image-card.loading-placeholder');
+                const placeholders = document.querySelectorAll('.image-card.loading-placeholder[data-batch-id="' + batchId + '"]');
                 for (const ph of placeholders) {
                     const textEl = ph.querySelector('.loading-placeholder-text');
                     if (textEl) {

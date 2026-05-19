@@ -129,6 +129,13 @@ const ImagenDB = {
     // --- Prompt History ---
     async savePrompt(text, mode) {
         await this.ensureOpen();
+
+        // Dedup: skip if the most recent prompt has the same text
+        const mostRecent = await this._getMostRecentPrompt();
+        if (mostRecent && mostRecent.text === text) {
+            return mostRecent;
+        }
+
         const entry = {
             text: text,
             timestamp: new Date().toISOString(),
@@ -142,6 +149,21 @@ const ImagenDB = {
             request.onsuccess = () => {
                 entry.id = request.result;
                 resolve(entry);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    },
+
+    async _getMostRecentPrompt() {
+        await this.ensureOpen();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction([this.promptHistoryStoreName], 'readonly');
+            const store = tx.objectStore(this.promptHistoryStoreName);
+            const index = store.index('timestamp');
+            const request = index.openCursor(null, 'prev');
+            request.onsuccess = () => {
+                const cursor = request.result;
+                resolve(cursor ? cursor.value : null);
             };
             request.onerror = () => reject(request.error);
         });

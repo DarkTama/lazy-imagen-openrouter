@@ -15,6 +15,14 @@ export async function exportGallery() {
             return;
         }
 
+        if (images.length > 100) {
+            const proceed = confirm(
+                'You are about to export ' + images.length + ' images. ' +
+                'This may produce a very large file and could be slow. Continue?'
+            );
+            if (!proceed) return;
+        }
+
         showToast('Exporting ' + images.length + ' images...', 'info');
 
         const exportData = {
@@ -24,7 +32,7 @@ export async function exportGallery() {
             images: images
         };
 
-        const jsonString = JSON.stringify(exportData, null, 2);
+        const jsonString = JSON.stringify(exportData);
         const blob = new Blob([jsonString], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
 
@@ -63,8 +71,13 @@ export async function importGallery(file) {
         const existingIds = new Set(state.images.map(img => img.id));
         let imported = 0;
         let skipped = 0;
+        let invalid = 0;
 
         for (const image of data.images) {
+            if (!isValidImageRecord(image)) {
+                invalid++;
+                continue;
+            }
             if (existingIds.has(image.id)) {
                 skipped++;
                 continue;
@@ -77,9 +90,22 @@ export async function importGallery(file) {
         state.images = await ImagenDB.getAllImages();
         renderGallery();
 
-        showToast('Imported ' + imported + ' new images, ' + skipped + ' skipped (duplicates)', 'success');
+        showToast(
+            'Imported ' + imported + ' new images, ' + skipped + ' skipped (duplicates)' +
+            (invalid > 0 ? ', ' + invalid + ' skipped (invalid)' : ''),
+            'success'
+        );
     } catch (error) {
         console.error('Import failed:', error);
         showToast('Import failed: ' + error.message, 'error');
     }
+}
+
+function isValidImageRecord(image) {
+    if (image.id === undefined || image.id === null) return false;
+    if (typeof image.url !== 'string') return false;
+    if (!image.url.startsWith('data:image/') && !image.url.startsWith('https://')) return false;
+    if (typeof image.prompt !== 'string') return false;
+    if (typeof image.createdAt !== 'string') return false;
+    return true;
 }
