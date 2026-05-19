@@ -345,17 +345,19 @@ export function showRolePickerPopover(triggerEl, imageUrl) {
         e.stopPropagation();
         const role = btn.dataset.role;
         // Import dynamically to avoid circular dependency
-        import('./orchestrator.js').then(({ renderRoleThumb, updateToggleDiffs, saveOrchestratorState: saveOrch }) => {
-            if (role === 'source') {
-                state.orchestrator.sourceImage = imageUrl;
-            } else {
-                state.orchestrator.referenceImage = imageUrl;
-            }
-            renderRoleThumb(role, imageUrl);
-            updateToggleDiffs();
-            saveOrch();
-            showToast(`Image set as ${role === 'source' ? 'Source' : 'Reference'}`, 'success');
-            pop.remove();
+        import('./orchestrator.js').then(({ renderRoleThumb, updateToggleDiffs }) => {
+            import('./state.js').then(({ saveOrchestratorState }) => {
+                if (role === 'source') {
+                    state.orchestrator.sourceImage = imageUrl;
+                } else {
+                    state.orchestrator.referenceImage = imageUrl;
+                }
+                renderRoleThumb(role, imageUrl);
+                updateToggleDiffs();
+                saveOrchestratorState();
+                showToast(`Image set as ${role === 'source' ? 'Source' : 'Reference'}`, 'success');
+                pop.remove();
+            });
         });
     });
 
