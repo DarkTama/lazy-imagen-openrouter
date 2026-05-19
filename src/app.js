@@ -11,10 +11,17 @@ import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension } from './ut
 import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal } from './ui.js';
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount } from './gallery.js';
 import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, enhanceGenerationModelDropdown } from './orchestrator.js';
+import { initTheme, toggleTheme } from './theme.js';
+import { initHistory } from './history.js';
 
 // ===== Initialization =====
 async function init() {
     initElements();
+    initTheme();
+
+    if (elements.themeToggleBtn) {
+        elements.themeToggleBtn.addEventListener('click', toggleTheme);
+    }
 
     if (state.apiKey) {
         elements.apiKey.value = state.apiKey;
@@ -67,6 +74,8 @@ async function init() {
     renderGallery();
 
     setupEventListeners();
+
+    initHistory();
 
     updateGeminiOptionsVisibility();
 
@@ -559,6 +568,9 @@ async function generateImages() {
 
     if (batch.completed > 0) {
         showToast(batch.completed + ' image(s) generated!', 'success');
+        ImagenDB.savePrompt(prompt, orchestratorActiveAtStart ? 'orchestrator' : 'manual').catch(e =>
+            console.error('Failed to save prompt to history:', e)
+        );
     } else if (orchestratorActiveAtStart && firstGenError) {
         if (firstGenError instanceof ApiError) {
             showOrchestratorError(firstGenError);

@@ -79,4 +79,10 @@ export function initElements() {
     // Sidebar Toggle (mobile)
     elements.sidebarToggle = document.getElementById('sidebarToggle');
     elements.sidebar = document.querySelector('.sidebar');
+
+    // Theme
+    elements.themeToggleBtn = document.getElementById('themeToggleBtn');
+
+    // History
+    elements.historyBtn = document.getElementById('historyBtn');
 }
