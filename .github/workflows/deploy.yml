@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+# Runs on every push to master, plus a manual button in the Actions tab.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Permissions required by the modern Pages flow.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time; let an in-flight deploy finish before
+# starting the next so we never publish a half-built site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site
+        # Vite emits content-hashed filenames into dist/ (e.g.
+        # assets/index-AbC123.js), which is stronger cache-busting than a
+        # commit-SHA query string — return visitors only re-download files
+        # that actually changed. The `base: '/lazy-imagen-openrouter/'`
+        # in vite.config.js makes those asset URLs subpath-correct for
+        # Pages.
+        run: npm run build
+
+      - name: Disable Jekyll on the built artifact
+        run: touch dist/.nojekyll
+
+      - name: Write version.txt for deploy verification
+        run: echo "deployed=${GITHUB_SHA:0:7}" > dist/version.txt
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

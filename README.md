@@ -267,20 +267,30 @@ This is a **100% client-side application**:
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Pure HTML/CSS/JavaScript (no dependencies)
+- **Frontend**: ES-module vanilla HTML/CSS/JavaScript (no runtime dependencies)
+- **Build / Dev**: Vite (bundling, content-hashed assets) + Vitest (tests) + ESLint + Prettier — dev-only
 - **API**: OpenRouter for model access
 - **Storage**: IndexedDB for image persistence
 - **Styling**: Custom CSS with CSS variables
+- **CI / Deploy**: GitHub Actions → GitHub Pages
 
 ## 📁 Project Structure
 
 ```
 lazy-imagen-openrouter/
-├── src/            # Source code (app.js, styles.css)
-├── assets/         # Screenshots
-├── index.html      # Main entry point
+├── .github/
+│   └── workflows/
+│       ├── ci.yml          # Lint + test + build on PRs / non-master pushes
+│       └── deploy.yml      # Auto-deploy to GitHub Pages on push to master
+├── src/                    # ES module sources (see Development → Architecture)
+├── tests/                  # Vitest test suites
+├── assets/                 # Screenshots
+├── index.html              # Main entry point
 ├── favicon.svg
-└── README.md       # This file — full user guide
+├── vite.config.js
+├── vitest.config.js
+├── package.json
+└── README.md               # This file — full user guide
 ```
 
 ## 🛠️ Development
@@ -337,6 +347,34 @@ The app relies on modern web APIs:
 - Optional chaining and nullish coalescing (ES2020)
 
 Supported browsers: Chrome 90+, Firefox 90+, Edge 90+, Safari 15+.
+
+## 🚀 Deployment
+
+This repo auto-deploys to GitHub Pages on every push to `master` via [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). The workflow:
+
+1. Sets up Node 22 with `actions/setup-node` (npm cache).
+2. Runs `npm ci` to install dev dependencies.
+3. Runs `npm run build` — Vite emits content-hashed asset filenames into `dist/`, which gives natural cache busting (return visitors only re-download files whose content actually changed).
+4. Drops `dist/.nojekyll` so Pages doesn't try to Jekyll-process the site.
+5. Writes `dist/version.txt` containing `deployed=<7-char SHA>` you can `curl` to confirm which commit is live.
+6. Uploads `dist/` and ships via `actions/deploy-pages`.
+
+**One-time setup** (only needed once per repo): in **Settings → Pages**, set **Source: GitHub Actions**.
+
+You can also trigger a deploy manually from the **Actions** tab via *Run workflow* on the *Deploy to GitHub Pages* workflow.
+
+To confirm a deploy landed:
+
+```bash
+curl https://<your-user>.github.io/lazy-imagen-openrouter/version.txt
+# → deployed=<short-sha>
+```
+
+> **Subpath note:** `vite.config.js` sets `base: '/lazy-imagen-openrouter/'` so the built `dist/` references assets under the GitHub Pages subpath. If you fork to a different repo name (or use a custom domain), update that `base` accordingly.
+
+### CI checks
+
+A companion [`ci.yml`](.github/workflows/ci.yml) runs on every PR to `master` and on pushes to any non-`master` branch. It runs `npm ci` → `npm run lint` → `npm test` → `npm run build`. A green build here is the strongest single signal that the next deploy will succeed; a failing build blocks the PR before broken code reaches `master`.
 
 ## 📜 License
 

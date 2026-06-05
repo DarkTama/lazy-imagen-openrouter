@@ -158,6 +158,20 @@ export const VISION_MODELS = [
     { id: 'meta-llama/llama-3.2-90b-vision-instruct', name: 'Llama 3.2 90B Vision',
       bestFor: 'Open-weights, general purpose',            speed: 'med',  context: '128K tokens' },
 
+    // === Newer flagship picks (2026 vintage) ===
+    { id: 'anthropic/claude-sonnet-4.5',              name: 'Claude Sonnet 4.5',
+      bestFor: 'Newer mid-tier Claude — strong reasoning',  speed: 'med',  context: '200K tokens' },
+    { id: 'anthropic/claude-haiku-4.5',               name: 'Claude Haiku 4.5',
+      bestFor: 'Fast Claude tier — cheaper',                speed: 'fast', context: '200K tokens' },
+    { id: 'google/gemini-3-flash-preview',            name: 'Gemini 3 Flash (Preview)',
+      bestFor: 'Newest Gemini Flash — improved fidelity',   speed: 'fast', context: '1M tokens' },
+    { id: 'qwen/qwen3-vl-235b-a22b-instruct',         name: 'Qwen3-VL 235B',
+      bestFor: 'Newer/larger Qwen VL — strong on anime/art', speed: 'med', context: '128K tokens' },
+    { id: 'mistralai/mistral-small-3.2-24b-instruct', name: 'Mistral Small 3.2 24B',
+      bestFor: 'Cheap Mistral vision — good fallback',      speed: 'fast', context: '128K tokens' },
+    { id: 'meta-llama/llama-4-maverick',              name: 'Llama 4 Maverick',
+      bestFor: 'Newest open-weight Llama vision',           speed: 'med',  context: '256K tokens' },
+
     // === Free tier ===
     { id: 'google/gemma-4-31b-it:free',               name: 'Gemma 4 31B (free)',
       bestFor: 'Free \u2014 large open Gemma vision model',     speed: 'med',  context: '262K tokens' },
@@ -167,6 +181,8 @@ export const VISION_MODELS = [
       bestFor: 'Free \u2014 smallest, fastest free option',     speed: 'fast', context: '128K tokens' },
     { id: 'openrouter/free',                           name: 'OpenRouter Free (auto-routed)',
       bestFor: 'Free \u2014 auto-picks an available free model', speed: 'med',  context: '200K tokens' },
+    { id: 'moonshotai/kimi-k2.6:free',                 name: 'Kimi K2.6 (free)',
+      bestFor: 'Free MoonshotAI option',                    speed: 'med',  context: '128K tokens' },
 ];
 
 // Lookup helper for vision models by id.
