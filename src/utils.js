@@ -12,7 +12,11 @@ export function escapeHtml(text) {
     if (text == null) return '';
     const div = document.createElement('div');
     div.textContent = String(text);
-    return div.innerHTML;
+    // textContent → innerHTML escapes <, >, & but leaves " untouched. We
+    // also escape double-quotes so the output is safe inside HTML attribute
+    // contexts (e.g. innerHTML templates that interpolate user text into
+    // attr="..." positions).
+    return div.innerHTML.replace(/"/g, '&quot;');
 }
 
 export function debounce(fn, ms = 300) {

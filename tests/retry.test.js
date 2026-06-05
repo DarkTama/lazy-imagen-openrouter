@@ -44,6 +44,11 @@ describe('retryWithBackoff', () => {
     const fn = vi.fn().mockRejectedValue(error);
 
     const promise = retryWithBackoff(fn, { maxRetries: 2, baseDelay: 1000 });
+    // Attach the rejection assertion BEFORE advancing timers, so the promise
+    // never has a moment without a handler (otherwise vitest reports an
+    // "Unhandled Rejection" during the timer advances even though the test
+    // assertion would pass).
+    const assertion = expect(promise).rejects.toEqual(error);
 
     // attempt 0 fails, wait 1000ms
     await vi.advanceTimersByTimeAsync(1000);
@@ -51,7 +56,7 @@ describe('retryWithBackoff', () => {
     await vi.advanceTimersByTimeAsync(2000);
     // attempt 2 (final) fails, should throw
 
-    await expect(promise).rejects.toEqual(error);
+    await assertion;
     expect(fn).toHaveBeenCalledTimes(3); // initial + 2 retries
   });
 
