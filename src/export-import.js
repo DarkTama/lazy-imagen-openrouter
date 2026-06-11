@@ -101,7 +101,7 @@ export async function importGallery(file) {
     }
 }
 
-function isValidImageRecord(image) {
+export function isValidImageRecord(image) {
     if (image.id === undefined || image.id === null) return false;
     if (typeof image.url !== 'string') return false;
     if (!image.url.startsWith('data:image/') && !image.url.startsWith('https://')) return false;

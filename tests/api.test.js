@@ -1,5 +1,42 @@
 import { describe, it, expect } from 'vitest';
 import { classifyError } from '../src/orchestrator.js';
+import { extractImageFromMessage } from '../src/api.js';
+
+describe('extractImageFromMessage', () => {
+  it('reads message.images with image_url shape', () => {
+    expect(extractImageFromMessage({
+      images: [{ image_url: { url: 'data:image/png;base64,AAA' } }],
+    })).toBe('data:image/png;base64,AAA');
+  });
+
+  it('reads bare-string and b64_json image shapes', () => {
+    expect(extractImageFromMessage({ images: ['https://x.test/i.png'] })).toBe('https://x.test/i.png');
+    expect(extractImageFromMessage({ images: ['QUJD'] })).toBe('data:image/png;base64,QUJD');
+    expect(extractImageFromMessage({ images: [{ b64_json: 'QUJD' }] })).toBe('data:image/png;base64,QUJD');
+  });
+
+  it('reads content-array shapes (image_url, inlineData, image)', () => {
+    expect(extractImageFromMessage({
+      content: [{ type: 'text', text: 'hi' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,BBB' } }],
+    })).toBe('data:image/png;base64,BBB');
+    expect(extractImageFromMessage({
+      content: [{ inlineData: { data: 'QUJD', mimeType: 'image/webp' } }],
+    })).toBe('data:image/webp;base64,QUJD');
+    expect(extractImageFromMessage({
+      content: [{ type: 'image', image: 'QUJD' }],
+    })).toBe('data:image/png;base64,QUJD');
+  });
+
+  it('reads a bare data-URI string content', () => {
+    expect(extractImageFromMessage({ content: 'data:image/png;base64,CCC' })).toBe('data:image/png;base64,CCC');
+  });
+
+  it('returns null when there is no image', () => {
+    expect(extractImageFromMessage(null)).toBeNull();
+    expect(extractImageFromMessage({ content: 'just text' })).toBeNull();
+    expect(extractImageFromMessage({ content: [{ type: 'text', text: 'nope' }] })).toBeNull();
+  });
+});
 
 describe('classifyError', () => {
   it('classifies network errors', () => {

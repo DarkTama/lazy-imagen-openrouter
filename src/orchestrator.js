@@ -5,7 +5,7 @@
 import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES } from './state.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
-import { escapeHtml, sanitizeImageUrl, debounce, showToast, formatPrice, speedGlyph, readFileAsDataURI, compressDataUri, compressImageFile, approxKB } from './utils.js';
+import { escapeHtml, sanitizeImageUrl, debounce, showToast, formatPrice, speedGlyph, readFileAsDataURI, compressDataUri, compressImageFile, approxKB, imageFingerprint } from './utils.js';
 import { ApiError, runVisionAnalysis, researchSubject } from './api.js';
 import { isMobileLayout, renderModelInfoCard } from './ui.js';
 
@@ -13,6 +13,7 @@ export function setupOrchestrator() {
     const o = state.orchestrator;
 
     renderToggleGrid();
+    renderPresets();
 
     elements.visionModelOptions.innerHTML = '';
     VISION_MODELS.forEach(m => {
@@ -80,6 +81,7 @@ export function setupOrchestrator() {
     if (o.lastAssembledPrompt) {
         elements.assembledPromptPreview.value = o.lastAssembledPrompt;
     }
+    updatePromptToolbar();
 }
 
 export function applyOrchestratorMode(enabled) {
@@ -88,6 +90,342 @@ export function applyOrchestratorMode(enabled) {
     document.body.classList.toggle('orchestrator-active', o.enabled);
     elements.orchestratorWorkspace.hidden = !o.enabled;
     elements.promptInput.readOnly = o.enabled;
+    placeTokenSaverTip(o.enabled);
+    renderOrchestratorReadiness();
+}
+
+/**
+ * The token-saver tip lives under the manual prompt, which orchestrator mode
+ * hides entirely. Relocate the single node (listeners travel with it) so the
+ * tip — and its Copy button, which copies the assembled prompt in this mode —
+ * sits right under the Assembled Prompt section.
+ */
+function placeTokenSaverTip(enabled) {
+    const tip = elements.tokenSaverTip || document.getElementById('tokenSaverTip');
+    if (!tip) return;
+    const target = enabled
+        ? document.querySelector('.ow-preview-section')
+        : document.querySelector('.prompt-area');
+    if (target && tip.parentElement !== target) {
+        target.appendChild(tip);
+    }
+}
+
+/**
+ * Readiness chips in the workspace footer: answer "why won't Generate work"
+ * before the click. Buttons stay enabled — their handlers already toast
+ * precise errors.
+ */
+export function renderOrchestratorReadiness() {
+    const strip = document.getElementById('owReadiness');
+    if (!strip) return;
+    const o = state.orchestrator;
+    const modelConfig = MODEL_CONFIGS[state.selectedModel];
+    const items = [
+        { label: 'Source', ok: Boolean(o.sourceImage) },
+        { label: 'Reference', ok: Boolean(o.referenceImage) },
+        { label: 'API key', ok: Boolean(state.apiKey) },
+        { label: 'Image-capable model', ok: Boolean(modelConfig?.supportsImageInput) }
+    ];
+    strip.innerHTML = items.map(item =>
+        `<span class="ow-ready-chip ${item.ok ? 'ok' : 'missing'}">${item.ok ? '✓' : '✗'} ${escapeHtml(item.label)}</span>`
+    ).join('');
+}
+
+// ===== Vision analysis cache (free re-assembly) =====
+// The vision call is the expensive half of Assemble; the prompt-building step
+// (assemblePrompt) is pure local code. Caching the analysis per image pair +
+// model means settings-only changes re-assemble instantly and free.
+const VISION_CACHE_KEY = 'imagen_vision_cache';
+let _visionCache = loadVisionCache();
+
+function loadVisionCache() {
+    try {
+        const raw = localStorage.getItem(VISION_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.srcFp && parsed.refFp && parsed.model && parsed.analysis) {
+            return parsed;
+        }
+    } catch (e) {
+        console.warn('Failed to load vision cache:', e);
+    }
+    return null;
+}
+
+function saveVisionCache() {
+    try {
+        if (_visionCache) {
+            localStorage.setItem(VISION_CACHE_KEY, JSON.stringify(_visionCache));
+        } else {
+            localStorage.removeItem(VISION_CACHE_KEY);
+        }
+    } catch (e) {
+        console.warn('Failed to persist vision cache:', e);
+    }
+}
+
+/** Pure validity check — exported for tests. */
+export function isVisionCacheValid(cache, srcFp, refFp, model) {
+    return Boolean(cache && cache.analysis && cache.srcFp === srcFp && cache.refFp === refFp && cache.model === model);
+}
+
+function getValidVisionCache() {
+    const o = state.orchestrator;
+    if (!o.sourceImage || !o.referenceImage) return null;
+    const model = (o.visionModelCustom && o.visionModelCustom.trim()) || o.visionModel;
+    return isVisionCacheValid(
+        _visionCache,
+        imageFingerprint(o.sourceImage),
+        imageFingerprint(o.referenceImage),
+        model
+    ) ? _visionCache : null;
+}
+
+export function invalidateVisionCache() {
+    _visionCache = null;
+    saveVisionCache();
+    updatePromptToolbar();
+}
+
+// ===== Assembled-prompt toolbar (char count, stale badge, re-analyze) =====
+let _promptStale = false;
+
+export function markPromptStale() {
+    _promptStale = true;
+    updatePromptToolbar();
+}
+
+function clearPromptStale() {
+    _promptStale = false;
+    updatePromptToolbar();
+}
+
+function updatePromptToolbar() {
+    const text = elements.assembledPromptPreview?.value || '';
+    if (elements.owPromptCount) {
+        elements.owPromptCount.textContent = text ? text.length + ' chars' : '';
+    }
+    const cacheValid = Boolean(getValidVisionCache());
+    if (elements.owStaleBadge) {
+        elements.owStaleBadge.hidden = !_promptStale || !text.trim();
+        elements.owStaleBadge.textContent = cacheValid
+            ? 'Settings changed — re-assemble (free)'
+            : 'Settings changed — re-assemble';
+    }
+    if (elements.owReanalyze) {
+        elements.owReanalyze.hidden = !cacheValid;
+    }
+}
+
+// ===== Role zone helpers =====
+/** Sync a dropzone's thumb/clear/filled state from `state` without touching it. */
+function refreshRoleZone(role) {
+    const o = state.orchestrator;
+    const img = role === 'source' ? o.sourceImage : o.referenceImage;
+    if (img) {
+        renderRoleThumb(role, img);
+    } else {
+        const thumb = role === 'source' ? elements.sourceThumb : elements.referenceThumb;
+        const clear = role === 'source' ? elements.sourceClear : elements.referenceClear;
+        const zone = role === 'source' ? elements.sourceDropzone : elements.referenceDropzone;
+        thumb.removeAttribute('src');
+        thumb.hidden = true;
+        clear.hidden = true;
+        zone.classList.remove('filled');
+    }
+}
+
+/**
+ * Assign an already-loaded image (gallery card, recents strip, iterate) to a
+ * role. Single chokepoint shared by the role-picker popover, slot drags and
+ * the modal Iterate button.
+ */
+export function setRoleImageFromUrl(role, dataUri) {
+    if (!dataUri) return;
+    if (role === 'source') {
+        state.orchestrator.sourceImage = dataUri;
+    } else {
+        state.orchestrator.referenceImage = dataUri;
+    }
+    renderRoleThumb(role, dataUri);
+    updateToggleDiffs();
+    saveOrchestratorState();
+    invalidateVisionCache();
+    markPromptStale();
+    rememberRecentRoleImage(dataUri);
+    showToast(`Image set as ${role === 'source' ? 'Source' : 'Reference'}`, 'success');
+}
+
+// ===== Recently used role images =====
+const ROLE_RECENTS_KEY = 'roleRecents';
+const MAX_ROLE_RECENTS = 6;
+let _roleRecents = [];
+
+export async function hydrateRoleRecents() {
+    try {
+        const raw = await ImagenDB.getOrchestratorBlob(ROLE_RECENTS_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                _roleRecents = parsed.filter(u => typeof u === 'string').slice(0, MAX_ROLE_RECENTS);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load recent role images:', e);
+    }
+    renderRoleRecents();
+}
+
+function rememberRecentRoleImage(dataUri) {
+    if (!dataUri || !sanitizeImageUrl(dataUri)) return;
+    const fp = imageFingerprint(dataUri);
+    _roleRecents = [dataUri, ..._roleRecents.filter(u => imageFingerprint(u) !== fp)]
+        .slice(0, MAX_ROLE_RECENTS);
+    ImagenDB.saveOrchestratorBlob(ROLE_RECENTS_KEY, JSON.stringify(_roleRecents)).catch(e =>
+        console.warn('Failed to persist recent role images:', e)
+    );
+    renderRoleRecents();
+}
+
+function renderRoleRecents() {
+    const strip = elements.owRecents;
+    const thumbs = elements.owRecentsThumbs;
+    if (!strip || !thumbs) return;
+    strip.hidden = _roleRecents.length === 0;
+    thumbs.innerHTML = '';
+    _roleRecents.forEach(url => {
+        const safe = sanitizeImageUrl(url);
+        if (!safe) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ow-recent-thumb';
+        btn.title = 'Click to use as Source or Reference';
+        btn.style.backgroundImage = `url('${safe}')`;
+        btn.addEventListener('click', () => {
+            import('./gallery.js').then(({ showRolePickerPopover }) => {
+                showRolePickerPopover(btn, url);
+            });
+        });
+        thumbs.appendChild(btn);
+    });
+}
+
+// ===== Workflow presets =====
+const CUSTOM_PRESETS_KEY = 'imagen_orch_presets';
+const MAX_CUSTOM_PRESETS = 8;
+
+const BUILTIN_PRESETS = [
+    { name: 'Outfit swap', transfers: { clothing: true, accessories: true }, artStyle: 'source' },
+    { name: 'Pose copy', transfers: { pose: true, camera: true }, artStyle: 'source' },
+    { name: 'Full style transfer', transfers: { background: true, lighting: true, palette: true }, artStyle: 'reference' },
+    { name: 'Scene swap', transfers: { background: true, lighting: true }, artStyle: 'source' }
+];
+
+function loadCustomPresets() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_PRESETS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveCustomPresets(presets) {
+    try {
+        localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(presets));
+    } catch (e) {
+        console.warn('Failed to persist presets:', e);
+    }
+}
+
+function applyPreset(preset) {
+    const o = state.orchestrator;
+    ATTRIBUTE_KEYS.forEach(attr => {
+        const on = Boolean(preset.transfers?.[attr]);
+        o.transfers[attr] = on;
+        const cb = elements.owToggleGrid?.querySelector('input[data-attr="' + attr + '"]');
+        if (cb) cb.checked = on;
+    });
+    if (preset.artStyle) {
+        o.artStyle = preset.artStyle;
+        const radio = document.querySelector('input[name="artStyle"][value="' + preset.artStyle + '"]');
+        if (radio) radio.checked = true;
+    }
+    if (preset.identityLock) {
+        o.identityLock = preset.identityLock;
+        if (elements.identityLock) elements.identityLock.value = preset.identityLock;
+    }
+    if (typeof preset.creativity === 'number') {
+        o.creativity = preset.creativity;
+        if (elements.creativitySlider) elements.creativitySlider.value = preset.creativity;
+        if (elements.creativityValue) elements.creativityValue.textContent = preset.creativity + '%';
+    }
+    updateToggleDiffs();
+    saveOrchestratorState();
+    markPromptStale();
+    showToast(`Preset applied: ${preset.name}`, 'success');
+}
+
+export function renderPresets() {
+    const row = elements.owPresets;
+    if (!row) return;
+    row.innerHTML = '';
+
+    const all = [
+        ...BUILTIN_PRESETS.map(p => ({ ...p, builtin: true })),
+        ...loadCustomPresets()
+    ];
+    all.forEach(preset => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'ow-preset-chip';
+        chip.textContent = preset.name;
+        chip.title = 'Apply this preset';
+        chip.addEventListener('click', () => applyPreset(preset));
+        if (!preset.builtin) {
+            const del = document.createElement('span');
+            del.className = 'ow-preset-del';
+            del.textContent = '×';
+            del.title = 'Delete this preset';
+            del.addEventListener('click', (e) => {
+                e.stopPropagation();
+                saveCustomPresets(loadCustomPresets().filter(p => p.name !== preset.name));
+                renderPresets();
+                showToast(`Preset deleted: ${preset.name}`, 'success');
+            });
+            chip.appendChild(del);
+        }
+        row.appendChild(chip);
+    });
+
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'ow-preset-chip ow-preset-save';
+    save.textContent = '+ Save current…';
+    save.title = 'Save the current toggles, style, identity lock and creativity as a preset';
+    save.addEventListener('click', () => {
+        const name = (prompt('Preset name:') || '').trim();
+        if (!name) return;
+        const customs = loadCustomPresets().filter(p => p.name !== name);
+        if (customs.length >= MAX_CUSTOM_PRESETS) {
+            showToast(`Preset limit reached (${MAX_CUSTOM_PRESETS}) — delete one first`, 'warning');
+            return;
+        }
+        const o = state.orchestrator;
+        customs.push({
+            name,
+            transfers: { ...o.transfers },
+            artStyle: o.artStyle,
+            identityLock: o.identityLock,
+            creativity: o.creativity
+        });
+        saveCustomPresets(customs);
+        renderPresets();
+        showToast(`Preset saved: ${name}`, 'success');
+    });
+    row.appendChild(save);
 }
 
 export function renderToggleGrid() {
@@ -113,6 +451,11 @@ export function updateToggleDiffs() {
     const o = state.orchestrator;
     const src = o.sourceImage;
     const ref = o.referenceImage;
+
+    if (elements.owTransferCount) {
+        const n = ATTRIBUTE_KEYS.filter(attr => o.transfers[attr]).length;
+        elements.owTransferCount.textContent = `(${n}/${ATTRIBUTE_KEYS.length})`;
+    }
 
     ATTRIBUTE_KEYS.forEach(attr => {
         const checked = !!o.transfers[attr];
@@ -189,13 +532,14 @@ export function renderRoleThumb(role, dataUri) {
     thumb.hidden = false;
     clear.hidden = false;
     zone.classList.add('filled');
+    renderOrchestratorReadiness();
 }
 
 export function clearRoleThumb(role) {
     const thumb = role === 'source' ? elements.sourceThumb : elements.referenceThumb;
     const clear = role === 'source' ? elements.sourceClear : elements.referenceClear;
     const zone = role === 'source' ? elements.sourceDropzone : elements.referenceDropzone;
-    thumb.src = '';
+    thumb.removeAttribute('src');
     thumb.hidden = true;
     clear.hidden = true;
     zone.classList.remove('filled');
@@ -208,6 +552,9 @@ export function clearRoleThumb(role) {
     }
     updateToggleDiffs();
     saveOrchestratorState();
+    invalidateVisionCache();
+    markPromptStale();
+    renderOrchestratorReadiness();
 }
 
 export async function setRoleImage(role, file) {
@@ -249,6 +596,9 @@ export async function setRoleImage(role, file) {
     renderRoleThumb(role, dataUri);
     updateToggleDiffs();
     saveOrchestratorState();
+    invalidateVisionCache();
+    markPromptStale();
+    rememberRecentRoleImage(dataUri);
 
     if (isLarge && !state.orchestrator.autoCompress) {
         const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
@@ -309,6 +659,13 @@ export function setupRoleDropzone(role) {
         });
     });
     zone.addEventListener('drop', (e) => {
+        // Gallery cards advertise their image via a custom type so they can
+        // be dropped straight onto a slot (no OS file involved)
+        const galleryUrl = e.dataTransfer?.getData('text/x-imagen-image');
+        if (galleryUrl) {
+            setRoleImageFromUrl(role, galleryUrl);
+            return;
+        }
         const file = e.dataTransfer?.files?.[0];
         if (file) setRoleImage(role, file);
     });
@@ -325,12 +682,72 @@ export function setupOrchestratorEventListeners(generateImages) {
     setupRoleDropzone('source');
     setupRoleDropzone('reference');
 
+    if (elements.owSwapBtn) {
+        elements.owSwapBtn.addEventListener('click', () => {
+            if (!o.sourceImage && !o.referenceImage) {
+                showToast('Nothing to swap yet — upload an image first', 'info');
+                return;
+            }
+            [o.sourceImage, o.referenceImage] = [o.referenceImage, o.sourceImage];
+            refreshRoleZone('source');
+            refreshRoleZone('reference');
+            updateToggleDiffs();
+            saveOrchestratorState();
+            invalidateVisionCache(); // the analysis labels are role-specific
+            markPromptStale();
+            renderOrchestratorReadiness();
+            showToast('Source and Reference swapped', 'success');
+        });
+    }
+
+    const setAllTransfers = (value) => {
+        ATTRIBUTE_KEYS.forEach(attr => {
+            o.transfers[attr] = value;
+            const cb = elements.owToggleGrid.querySelector('input[data-attr="' + attr + '"]');
+            if (cb) cb.checked = value;
+        });
+        updateToggleDiffs();
+        saveOrchestratorState();
+        markPromptStale();
+    };
+    if (elements.owTransferAll) {
+        elements.owTransferAll.addEventListener('click', () => setAllTransfers(true));
+    }
+    if (elements.owTransferNone) {
+        elements.owTransferNone.addEventListener('click', () => setAllTransfers(false));
+    }
+
+    if (elements.owCopyPrompt) {
+        elements.owCopyPrompt.addEventListener('click', async () => {
+            const text = (elements.assembledPromptPreview?.value || '').trim();
+            if (!text) {
+                showToast('Nothing to copy yet — assemble a prompt first', 'warning');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast('Prompt copied', 'success');
+            } catch (err) {
+                console.warn('Copy prompt failed:', err);
+                showToast('Could not copy the prompt', 'error');
+            }
+        });
+    }
+
+    if (elements.owReanalyze) {
+        elements.owReanalyze.addEventListener('click', () => {
+            invalidateVisionCache();
+            assembleOrchestratorPrompt();
+        });
+    }
+
     elements.owToggleGrid.addEventListener('change', (e) => {
         const cb = e.target.closest('input[type="checkbox"][data-attr]');
         if (!cb) return;
         o.transfers[cb.dataset.attr] = cb.checked;
         updateToggleDiffs();
         saveOrchestratorState();
+        markPromptStale();
     });
 
     document.querySelectorAll('input[name="artStyle"]').forEach(r => {
@@ -338,6 +755,7 @@ export function setupOrchestratorEventListeners(generateImages) {
             if (r.checked) {
                 o.artStyle = r.value;
                 saveOrchestratorState();
+                markPromptStale();
             }
         });
     });
@@ -345,13 +763,17 @@ export function setupOrchestratorEventListeners(generateImages) {
     elements.identityLock.addEventListener('change', () => {
         o.identityLock = elements.identityLock.value;
         saveOrchestratorState();
+        markPromptStale();
     });
 
     elements.creativitySlider.addEventListener('input', () => {
         o.creativity = parseInt(elements.creativitySlider.value, 10);
         elements.creativityValue.textContent = o.creativity + '%';
     });
-    elements.creativitySlider.addEventListener('change', saveOrchestratorState);
+    elements.creativitySlider.addEventListener('change', () => {
+        saveOrchestratorState();
+        markPromptStale();
+    });
 
     elements.visionModelTrigger.addEventListener('click', () => {
         elements.visionModelContainer.classList.toggle('open');
@@ -371,6 +793,8 @@ export function setupOrchestratorEventListeners(generateImages) {
         elements.visionModelTrigger.setAttribute('aria-expanded', 'false');
         renderVisionModelChip();
         saveOrchestratorState();
+        markPromptStale();
+        updatePromptToolbar(); // cache validity depends on the vision model
     });
     document.addEventListener('click', (e) => {
         if (!elements.visionModelContainer.contains(e.target)) {
@@ -383,6 +807,8 @@ export function setupOrchestratorEventListeners(generateImages) {
         o.visionModelCustom = elements.visionModelCustom.value;
         renderVisionModelChip();
         saveOrchestratorState();
+        markPromptStale();
+        updatePromptToolbar();
     }, 250));
 
     elements.owSubjectContextSection.addEventListener('toggle', () => {
@@ -403,6 +829,7 @@ export function setupOrchestratorEventListeners(generateImages) {
             ? 'Research this subject via web search'
             : 'Type a subject name first';
         saveOrchestratorState();
+        markPromptStale();
     }, 250));
 
     elements.researchModelSelect.addEventListener('change', () => {
@@ -444,6 +871,7 @@ export function setupOrchestratorEventListeners(generateImages) {
     elements.orchestratorNotes.addEventListener('input', debounce(() => {
         o.notes = elements.orchestratorNotes.value;
         saveOrchestratorState();
+        markPromptStale();
     }, 250));
 
     if (elements.orchestratorAssembleBtn) {
@@ -458,6 +886,8 @@ export function setupOrchestratorEventListeners(generateImages) {
         elements.assembledPromptPreview.addEventListener('input', debounce(() => {
             state.orchestrator.lastAssembledPrompt = elements.assembledPromptPreview.value;
             saveOrchestratorState();
+            // The user owns the prompt once they edit it by hand
+            clearPromptStale();
         }, 300));
     }
 
@@ -549,26 +979,50 @@ export function setGenerateButtonLoading(on) {
 
 export async function assembleOrchestratorPrompt() {
     const o = state.orchestrator;
-    if (!state.apiKey) {
-        showToast('Save your OpenRouter API key first', 'error');
-        return null;
-    }
     if (!o.sourceImage || !o.referenceImage) {
         showToast('Upload both Source and Reference images before assembling', 'error');
+        return null;
+    }
+
+    // Free path: the expensive part of Assemble is the vision call; building
+    // the prompt from its analysis is pure local code. If the cached analysis
+    // still matches this image pair + model, skip the API entirely.
+    const cached = getValidVisionCache();
+
+    if (!cached && !state.apiKey) {
+        showToast('Save your OpenRouter API key first', 'error');
         return null;
     }
     hideOrchestratorPanel();
     const visionModel = (o.visionModelCustom && o.visionModelCustom.trim()) || o.visionModel;
     setAssembleButtonLoading(true);
     try {
-        const vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel);
+        let vision;
+        if (cached) {
+            vision = cached.analysis;
+        } else {
+            vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel);
+            _visionCache = {
+                srcFp: imageFingerprint(o.sourceImage),
+                refFp: imageFingerprint(o.referenceImage),
+                model: visionModel,
+                analysis: vision
+            };
+            saveVisionCache();
+        }
         const assembled = assemblePrompt(vision, o);
         o.lastAssembledPrompt = assembled;
         if (elements.assembledPromptPreview) {
             elements.assembledPromptPreview.value = assembled;
         }
         saveOrchestratorState();
-        showToast('Prompt assembled. Review or edit, then click Generate Image.', 'success');
+        clearPromptStale();
+        showToast(
+            cached
+                ? 'Re-assembled from cached analysis — no tokens spent'
+                : 'Prompt assembled. Review or edit, then click Generate Image.',
+            'success'
+        );
         return assembled;
     } catch (err) {
         console.error('Assemble failed:', err);
@@ -660,6 +1114,9 @@ export function restoreOrchestratorFromSnapshot(snap) {
 
     updateToggleDiffs();
     saveOrchestratorState();
+    // The restored prompt matches the restored settings — not stale
+    clearPromptStale();
+    renderOrchestratorReadiness();
 }
 
 export function classifyError(err) {
@@ -837,6 +1294,9 @@ export async function hydrateOrchestratorImages() {
     if (o.sourceImage) renderRoleThumb('source', o.sourceImage);
     if (o.referenceImage) renderRoleThumb('reference', o.referenceImage);
     updateToggleDiffs();
+    renderOrchestratorReadiness();
+    updatePromptToolbar();
+    await hydrateRoleRecents();
 }
 
 export function enhanceGenerationModelDropdown() {

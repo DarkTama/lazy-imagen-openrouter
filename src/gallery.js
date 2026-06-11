@@ -5,17 +5,43 @@
 import { state, MODEL_CONFIGS } from './state.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
-import { escapeHtml, sanitizeImageUrl, modeTagHtml, getImageExtension, showToast } from './utils.js';
+import { escapeHtml, sanitizeImageUrl, modeTagHtml, getImageExtension, showToast, copyImageToClipboard, debounce } from './utils.js';
 import { openModal } from './ui.js';
+
+/** Apply the current search / model / favorites filter to state.images. */
+export function getFilteredImages() {
+    const filter = state.galleryFilter;
+    if (!filter || (!filter.text && !filter.model && !filter.favoritesOnly)) {
+        return state.images;
+    }
+    const text = (filter.text || '').toLowerCase();
+    return state.images.filter(img => {
+        if (filter.favoritesOnly && !img.isFavorite) return false;
+        if (filter.model && img.model !== filter.model) return false;
+        if (text) {
+            const haystack = `${img.prompt || ''} ${img.modelName || ''} ${img.model || ''}`.toLowerCase();
+            if (!haystack.includes(text)) return false;
+        }
+        return true;
+    });
+}
+
+function isGalleryFilterActive() {
+    const f = state.galleryFilter;
+    return Boolean(f && (f.text || f.model || f.favoritesOnly));
+}
 
 export function renderGallery() {
     const hasPending = state.pendingBatches.length > 0;
     const hasImages = state.images.length > 0;
 
+    updateModelFilterOptions();
+
     if (!hasImages && !hasPending) {
         elements.galleryEmpty.style.display = 'flex';
         elements.gallery.innerHTML = '';
         elements.gallery.appendChild(elements.galleryEmpty);
+        updateGalleryCount();
         return;
     }
 
@@ -57,15 +83,23 @@ export function renderGallery() {
         }
     });
 
-    // Render existing images (paginated)
-    const imagesToShow = state.images.slice(0, state.galleryDisplayedCount);
+    // Render existing images (paginated, after filtering)
+    const filtered = getFilteredImages();
+    const imagesToShow = filtered.slice(0, state.galleryDisplayedCount);
     imagesToShow.forEach((image, index) => {
         const card = createImageCardElement(image, index);
         elements.gallery.appendChild(card);
     });
 
+    if (filtered.length === 0 && !hasPending && isGalleryFilterActive()) {
+        const noMatch = document.createElement('div');
+        noMatch.className = 'gallery-no-match';
+        noMatch.textContent = 'No images match the current filter';
+        elements.gallery.appendChild(noMatch);
+    }
+
     // Add "Load more" button if there are more images to show
-    if (state.images.length > state.galleryDisplayedCount) {
+    if (filtered.length > state.galleryDisplayedCount) {
         const loadMoreBtn = document.createElement('button');
         loadMoreBtn.className = 'gallery-load-more';
         loadMoreBtn.textContent = 'Load more';
@@ -83,13 +117,14 @@ export function loadMoreGallery() {
     const existingBtn = elements.gallery.querySelector('.gallery-load-more');
     if (existingBtn) existingBtn.remove();
 
-    const nextPage = state.images.slice(prevCount, state.galleryDisplayedCount);
+    const filtered = getFilteredImages();
+    const nextPage = filtered.slice(prevCount, state.galleryDisplayedCount);
     nextPage.forEach((image) => {
         const card = createImageCardElement(image, state.images.indexOf(image));
         elements.gallery.appendChild(card);
     });
 
-    if (state.images.length > state.galleryDisplayedCount) {
+    if (filtered.length > state.galleryDisplayedCount) {
         const loadMoreBtn = document.createElement('button');
         loadMoreBtn.className = 'gallery-load-more';
         loadMoreBtn.textContent = 'Load more';
@@ -108,8 +143,85 @@ export function updateGalleryCount() {
         countEl.textContent = '';
         return;
     }
-    const showing = Math.min(state.galleryDisplayedCount, total);
-    countEl.textContent = `Showing ${showing} of ${total}`;
+    const filtered = getFilteredImages();
+    const showing = Math.min(state.galleryDisplayedCount, filtered.length);
+    countEl.textContent = isGalleryFilterActive()
+        ? `Showing ${showing} of ${filtered.length} matching (${total} total)`
+        : `Showing ${showing} of ${total}`;
+}
+
+/** Keep the model-filter dropdown in sync with the models present in the gallery. */
+function updateModelFilterOptions() {
+    const select = document.getElementById('galleryModelFilter');
+    if (!select) return;
+    const models = new Map();
+    state.images.forEach(img => {
+        if (img.model && !models.has(img.model)) {
+            models.set(img.model, img.modelName || img.model);
+        }
+    });
+    const current = state.galleryFilter.model;
+    select.innerHTML = '<option value="">All models</option>' +
+        [...models.entries()]
+            .map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`)
+            .join('');
+    select.value = models.has(current) ? current : '';
+    if (select.value === '' && current) {
+        state.galleryFilter.model = '';
+    }
+}
+
+/** Wire the gallery filter bar. Called once from app.js init. */
+export function initGalleryFilters() {
+    const search = document.getElementById('gallerySearch');
+    const modelSelect = document.getElementById('galleryModelFilter');
+    const favChip = document.getElementById('galleryFavFilter');
+    if (!search || !modelSelect || !favChip) return;
+
+    const applyFilter = () => {
+        state.galleryDisplayedCount = state.galleryPageSize;
+        renderGallery();
+    };
+
+    search.addEventListener('input', debounce(() => {
+        state.galleryFilter.text = search.value.trim();
+        applyFilter();
+    }, 250));
+
+    modelSelect.addEventListener('change', () => {
+        state.galleryFilter.model = modelSelect.value;
+        applyFilter();
+    });
+
+    favChip.addEventListener('click', () => {
+        state.galleryFilter.favoritesOnly = !state.galleryFilter.favoritesOnly;
+        favChip.classList.toggle('active', state.galleryFilter.favoritesOnly);
+        favChip.setAttribute('aria-pressed', String(state.galleryFilter.favoritesOnly));
+        applyFilter();
+    });
+}
+
+/** Toggle an image's favorite flag, persist it, and sync visible UI. */
+export async function toggleFavorite(imageId) {
+    const image = state.images.find(img => img.id === imageId);
+    if (!image) return null;
+    image.isFavorite = !image.isFavorite;
+
+    const cardStar = elements.gallery.querySelector(
+        `.image-card[data-image-id="${imageId}"] .image-card-favorite`
+    );
+    if (cardStar) cardStar.classList.toggle('active', image.isFavorite);
+
+    try {
+        await ImagenDB.saveImage(image);
+    } catch (e) {
+        console.warn('Could not persist favorite flag:', e);
+    }
+
+    if (state.galleryFilter.favoritesOnly && !image.isFavorite) {
+        renderGallery();
+    }
+    return image.isFavorite;
 }
 
 export function addLoadingPlaceholders(batch, count) {
@@ -191,7 +303,20 @@ export function createImageCardElement(image, index) {
     const safePrompt = escapeHtml(image.prompt);
 
     card.innerHTML = `
+        <div class="image-card-actions image-card-actions-topleft">
+            <button class="image-card-btn image-card-favorite ${image.isFavorite ? 'active' : ''}" title="Favorite">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+            </button>
+        </div>
         <div class="image-card-actions image-card-actions-top">
+            <button class="image-card-btn image-card-copy" title="Copy image to clipboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+            </button>
             <button class="image-card-btn image-card-download" title="Download image">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -222,6 +347,19 @@ export function createImageCardElement(image, index) {
                     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                 </svg>
             </button>
+            <button class="image-card-btn image-card-tools" title="Image tools (upscale / remove background)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="21" x2="4" y2="14"></line>
+                    <line x1="4" y1="10" x2="4" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12" y2="3"></line>
+                    <line x1="20" y1="21" x2="20" y2="16"></line>
+                    <line x1="20" y1="12" x2="20" y2="3"></line>
+                    <line x1="1" y1="14" x2="7" y2="14"></line>
+                    <line x1="9" y1="8" x2="15" y2="8"></line>
+                    <line x1="17" y1="16" x2="23" y2="16"></line>
+                </svg>
+            </button>
         </div>
         <img src="${safeUrl}" alt="${safePrompt}" loading="lazy">
         <div class="image-card-overlay">
@@ -235,12 +373,41 @@ export function createImageCardElement(image, index) {
         </div>
     `;
 
+    // Cards can be dragged straight onto the orchestrator Source/Reference
+    // dropzones (custom type — the OS-file drop overlay ignores it)
+    const cardImg = card.querySelector('img');
+    if (cardImg) {
+        cardImg.draggable = true;
+        cardImg.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/x-imagen-image', image.url);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+    }
+
     attachImageCardHandlers(card, image);
     return card;
 }
 
 export function attachImageCardHandlers(card, image) {
     const imageId = image.id;
+
+    card.querySelector('.image-card-favorite').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFavorite(imageId);
+    });
+
+    card.querySelector('.image-card-copy').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const img = state.images.find(i => i.id === imageId);
+        if (!img) return;
+        try {
+            await copyImageToClipboard(img.url);
+            showToast('Image copied to clipboard', 'success');
+        } catch (err) {
+            console.warn('Copy image failed:', err);
+            showToast(err.message || 'Could not copy image', 'error');
+        }
+    });
 
     card.querySelector('.image-card-download').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -264,6 +431,14 @@ export function attachImageCardHandlers(card, image) {
         e.stopPropagation();
         const idx = state.images.findIndex(img => img.id === imageId);
         if (idx !== -1) recreateImageByIndex(idx);
+    });
+
+    card.querySelector('.image-card-tools').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = state.images.findIndex(img => img.id === imageId);
+        if (idx === -1) return;
+        // Dynamic import keeps gallery.js free of an image-tools cycle
+        import('./image-tools.js').then(({ openImageTools }) => openImageTools(state.images[idx]));
     });
 
     card.addEventListener('click', () => {
@@ -345,19 +520,9 @@ export function showRolePickerPopover(triggerEl, imageUrl) {
         e.stopPropagation();
         const role = btn.dataset.role;
         // Import dynamically to avoid circular dependency
-        import('./orchestrator.js').then(({ renderRoleThumb, updateToggleDiffs }) => {
-            import('./state.js').then(({ saveOrchestratorState }) => {
-                if (role === 'source') {
-                    state.orchestrator.sourceImage = imageUrl;
-                } else {
-                    state.orchestrator.referenceImage = imageUrl;
-                }
-                renderRoleThumb(role, imageUrl);
-                updateToggleDiffs();
-                saveOrchestratorState();
-                showToast(`Image set as ${role === 'source' ? 'Source' : 'Reference'}`, 'success');
-                pop.remove();
-            });
+        import('./orchestrator.js').then(({ setRoleImageFromUrl }) => {
+            setRoleImageFromUrl(role, imageUrl);
+            pop.remove();
         });
     });
 

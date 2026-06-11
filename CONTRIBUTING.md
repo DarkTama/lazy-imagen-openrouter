@@ -25,7 +25,7 @@ This starts a Vite dev server with hot-reload at `http://localhost:5173`.
 
 ## Architecture
 
-The project is a vanilla JS single-page application using ES modules with no runtime dependencies.
+The project is a vanilla JS single-page application using ES modules. The only runtime dependency is [pica](https://github.com/nodeca/pica) (high-quality image resampling for the client-side upscaler).
 
 ```
 src/
@@ -37,20 +37,26 @@ src/
   state.js         - Application constants, model configs, and shared mutable state
   elements.js      - Cached DOM element references
   db.js            - IndexedDB wrapper for persistent image storage
-  ui.js            - Sidebar, modal, and UI helper functions
-  gallery.js       - Gallery rendering and image management
+  ui.js            - Sidebar, modal, focus trap, and UI helper functions
+  gallery.js       - Gallery rendering, search/filter, favorites, image management
+  image-tools.js   - Image Tools editor shell (upscale + background removal UI)
+  upscaler.js      - Client-side upscaling via pica (Lanczos resampling)
+  bg-removal.js    - Pure background-removal algorithms (flood fill, masks, brushes)
+  help.js          - Help guide modal and first-visit onboarding
   history.js       - Prompt history with favorites
-  notifications.js - Notification history system
+  notifications.js - Notification history system (persisted to localStorage)
   export-import.js - Gallery export/import functionality
   accessibility.js - ARIA patterns and keyboard navigation
   theme.js         - Dark/light theme toggle
   styles.css       - All application styles
+scripts/
+  generate-icons.mjs - One-off PWA icon generation (outputs committed to public/icons/)
 ```
 
 ### Key patterns
 
 - **ES modules** - All files use `import`/`export`. No CommonJS, no bundler plugins for transforms.
-- **No runtime dependencies** - Zero `node_modules` code ships to the browser. Dev dependencies are for tooling only.
+- **Minimal runtime dependencies** - The browser bundle only includes `pica` (image resampling). Everything else is hand-rolled; dev dependencies are for tooling only.
 - **CSS custom properties** - Theming uses variables like `--bg-primary`, `--text-primary`, defined in `:root` and toggled via a `.light-theme` class.
 - **ARIA patterns** - Interactive widgets (custom selects, modals, sliders) follow WAI-ARIA authoring practices.
 - **State management** - A single mutable `state` object in `state.js`; no framework, no store library.
@@ -59,7 +65,7 @@ src/
 ## Coding Conventions
 
 - Write ES2020+ JavaScript (optional chaining, nullish coalescing, etc.)
-- No runtime dependencies - if you need a utility, add it to `src/utils.js`
+- Avoid new runtime dependencies - if you need a utility, add it to `src/utils.js` (pica is the deliberate exception)
 - Use CSS custom properties for any new colors or spacing values
 - Follow existing ARIA patterns for interactive widgets
 - Keep functions small and focused; prefer pure functions where possible

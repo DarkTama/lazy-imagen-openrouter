@@ -84,7 +84,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
     if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
         let parsedMsg;
-        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) {}
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
         throw new ApiError({
             kind: 'http', stage: 'vision', modelId,
             status: response.status,
@@ -167,7 +167,7 @@ export async function researchSubject(subjectText, modelId) {
     if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
         let parsedMsg;
-        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) {}
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
         throw new ApiError({
             kind: 'http', stage: 'research', modelId,
             status: response.status,
@@ -186,6 +186,118 @@ export async function researchSubject(subjectText, modelId) {
         });
     }
     return text.trim();
+}
+
+/**
+ * Pull an image (data URI or URL) out of a chat-completions message,
+ * covering the response shapes the various image providers use.
+ * Returns null when the message contains no image.
+ */
+export function extractImageFromMessage(message) {
+    if (!message) return null;
+
+    if (message.images && message.images.length > 0) {
+        const img = message.images[0];
+        if (img.image_url?.url) {
+            return img.image_url.url;
+        }
+        if (typeof img === 'string') {
+            if (img.startsWith('data:') || img.startsWith('http')) {
+                return img;
+            }
+            return `data:image/png;base64,${img}`;
+        }
+        if (img.url) return img.url;
+        if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
+    }
+
+    if (Array.isArray(message.content)) {
+        for (const part of message.content) {
+            if (part.type === 'image_url' && part.image_url?.url) {
+                return part.image_url.url;
+            }
+            if (part.inlineData?.data) {
+                const mimeType = part.inlineData.mimeType || 'image/png';
+                return `data:${mimeType};base64,${part.inlineData.data}`;
+            }
+            if (part.type === 'image' && part.image) {
+                if (part.image.startsWith('data:')) {
+                    return part.image;
+                }
+                return `data:image/png;base64,${part.image}`;
+            }
+        }
+    }
+
+    if (typeof message.content === 'string' && message.content.startsWith('data:image')) {
+        return message.content;
+    }
+
+    return null;
+}
+
+/**
+ * One-shot image edit: send an image plus an instruction, get an image back.
+ * Used by the Image Tools AI assist. Deliberately NOT wrapped in the retry
+ * helper — every attempt charges the user's OpenRouter account.
+ */
+export async function runImageEdit(imageDataUri, instruction, modelId, { signal } = {}) {
+    let response;
+    try {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            signal,
+            headers: {
+                'Authorization': `Bearer ${state.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.origin,
+                'X-Title': 'Imagen Internal Tool'
+            },
+            body: JSON.stringify({
+                model: modelId,
+                messages: [
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'image_url', image_url: { url: imageDataUri, detail: 'high' } },
+                            { type: 'text', text: instruction }
+                        ]
+                    }
+                ],
+                modalities: ['image', 'text']
+            })
+        });
+    } catch (netErr) {
+        if (netErr.name === 'AbortError') throw netErr;
+        throw new ApiError({
+            kind: 'network', stage: 'image-edit', modelId,
+            message: netErr.message || 'Network request failed',
+            body: String(netErr)
+        });
+    }
+
+    if (!response.ok) {
+        const bodyText = await response.text().catch(() => '');
+        let parsedMsg;
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
+        throw new ApiError({
+            kind: 'http', stage: 'image-edit', modelId,
+            status: response.status,
+            message: parsedMsg || `HTTP ${response.status}`,
+            body: bodyText
+        });
+    }
+
+    const data = await response.json();
+    const imageUrl = extractImageFromMessage(data.choices?.[0]?.message);
+    if (!imageUrl) {
+        throw new ApiError({
+            kind: 'no-image', stage: 'image-edit', modelId,
+            message: 'The model returned no image',
+            body: JSON.stringify(data, null, 2)
+        });
+    }
+    return imageUrl;
 }
 
 export async function generateSingleImage(prompt, modelConfig, { onRetry } = {}) {
@@ -260,7 +372,7 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
     if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
         let parsedMsg;
-        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) {}
+        try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
         throw new ApiError({
             kind: 'http', stage: 'generation', modelId,
             status: response.status,
@@ -282,42 +394,8 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
 
     console.log('API Response:', JSON.stringify(data, null, 2));
 
-    if (message.images && message.images.length > 0) {
-        const img = message.images[0];
-        if (img.image_url?.url) {
-            return img.image_url.url;
-        }
-        if (typeof img === 'string') {
-            if (img.startsWith('data:') || img.startsWith('http')) {
-                return img;
-            }
-            return `data:image/png;base64,${img}`;
-        }
-        if (img.url) return img.url;
-        if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-    }
-
-    if (Array.isArray(message.content)) {
-        for (const part of message.content) {
-            if (part.type === 'image_url' && part.image_url?.url) {
-                return part.image_url.url;
-            }
-            if (part.inlineData?.data) {
-                const mimeType = part.inlineData.mimeType || 'image/png';
-                return `data:${mimeType};base64,${part.inlineData.data}`;
-            }
-            if (part.type === 'image' && part.image) {
-                if (part.image.startsWith('data:')) {
-                    return part.image;
-                }
-                return `data:image/png;base64,${part.image}`;
-            }
-        }
-    }
-
-    if (typeof message.content === 'string' && message.content.startsWith('data:image')) {
-        return message.content;
-    }
+    const imageUrl = extractImageFromMessage(message);
+    if (imageUrl) return imageUrl;
 
     throw new ApiError({
         kind: 'no-image', stage: 'generation', modelId,

@@ -147,6 +147,51 @@ export function speedGlyph(speed) {
     return '◐ medium';
 }
 
+/** Decode an image URL and re-encode as a PNG blob (ClipboardItem only reliably supports PNG). */
+export function dataUriToPngBlob(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        if (!url.startsWith('data:')) img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            canvas.toBlob(
+                blob => (blob ? resolve(blob) : reject(new Error('PNG encoding failed'))),
+                'image/png'
+            );
+        };
+        img.onerror = () => reject(new Error('Failed to decode image'));
+        img.src = url;
+    });
+}
+
+export async function copyImageToClipboard(url) {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+        throw new Error('Image clipboard is not supported in this browser');
+    }
+    const blob = await dataUriToPngBlob(url);
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+}
+
+/**
+ * Cheap stable fingerprint for (potentially huge) data-URI strings, so they
+ * can be compared/deduped without storing or hashing megabytes.
+ */
+export function imageFingerprint(dataUri) {
+    if (!dataUri) return '';
+    const s = String(dataUri);
+    return `${s.length}:${s.slice(0, 64)}:${s.slice(-64)}`;
+}
+
+/** Format a dollar amount with sensible precision for tiny per-image prices. */
+export function formatUsd(value) {
+    if (value >= 0.1) return value.toFixed(2);
+    if (value >= 0.001) return value.toFixed(3);
+    return value.toFixed(4);
+}
+
 export function showToast(message, type = 'info') {
     let container = document.querySelector('.toast-container');
     if (!container) {

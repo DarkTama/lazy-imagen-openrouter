@@ -7,15 +7,17 @@ import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS } from './state.js';
 import { ApiError, generateSingleImage, fetchModelPricing, runWithConcurrency } from './api.js';
-import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension } from './utils.js';
-import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal } from './ui.js';
-import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount } from './gallery.js';
-import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, enhanceGenerationModelDropdown } from './orchestrator.js';
+import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
+import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal } from './ui.js';
+import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
+import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, enhanceGenerationModelDropdown, renderOrchestratorReadiness, setRoleImageFromUrl } from './orchestrator.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { initHistory } from './history.js';
 import { initAccessibility } from './accessibility.js';
 import { exportGallery, importGallery } from './export-import.js';
 import { initNotifications } from './notifications.js';
+import { initImageTools, openImageTools, closeImageTools, isImageToolsOpen } from './image-tools.js';
+import { initHelp } from './help.js';
 
 // ===== Initialization =====
 async function init() {
@@ -74,7 +76,11 @@ async function init() {
 
     await hydrateOrchestratorImages();
 
+    await hydrateManualReferences();
+
     renderGallery();
+
+    initGalleryFilters();
 
     setupEventListeners();
 
@@ -83,6 +89,10 @@ async function init() {
     initAccessibility();
 
     initNotifications();
+
+    initImageTools();
+
+    initHelp();
 
     // Auto-retry toggle
     if (elements.autoRetryToggle) {
@@ -97,9 +107,12 @@ async function init() {
 
     renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
 
+    renderCostEstimate();
+
     fetchModelPricing().then(() => {
         renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
         renderVisionModelChip();
+        renderCostEstimate();
     });
 }
 
@@ -144,6 +157,8 @@ function setupEventListeners() {
             elements.modelSelectTrigger.setAttribute('aria-expanded', 'false');
             updateGeminiOptionsVisibility();
             renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+            renderCostEstimate();
+            renderOrchestratorReadiness();
             if (isMobileLayout()) closeSidebar();
         });
     });
@@ -181,6 +196,7 @@ function setupEventListeners() {
                 state.imageCount--;
                 elements.imageCount.value = state.imageCount;
                 localStorage.setItem('imagen_count', state.imageCount);
+                renderCostEstimate();
             }
         });
     }
@@ -191,6 +207,7 @@ function setupEventListeners() {
                 state.imageCount++;
                 elements.imageCount.value = state.imageCount;
                 localStorage.setItem('imagen_count', state.imageCount);
+                renderCostEstimate();
             }
         });
     }
@@ -203,6 +220,7 @@ function setupEventListeners() {
             state.imageCount = val;
             elements.imageCount.value = val;
             localStorage.setItem('imagen_count', state.imageCount);
+            renderCostEstimate();
         });
     }
 
@@ -216,6 +234,7 @@ function setupEventListeners() {
             localStorage.removeItem('imagen_api_key');
         }
         showToast('API key saved!', 'success');
+        renderOrchestratorReadiness();
         if (isMobileLayout()) closeSidebar();
     });
 
@@ -240,6 +259,7 @@ function setupEventListeners() {
             state.apiKey = '';
             elements.apiKey.value = '';
             showToast('API key cleared', 'success');
+            renderOrchestratorReadiness();
         }
     });
 
@@ -286,13 +306,72 @@ function setupEventListeners() {
     elements.recreateImage.addEventListener('click', recreateImage);
     elements.downloadImage.addEventListener('click', downloadCurrentImage);
 
+    if (elements.imageToolsBtn) {
+        elements.imageToolsBtn.addEventListener('click', () => openImageTools(null));
+    }
+    if (elements.editImage) {
+        elements.editImage.addEventListener('click', () => {
+            const image = state.currentImage; // closeModal() nulls it
+            closeModal();
+            if (image) openImageTools(image);
+        });
+    }
+
+    const modalPrev = document.getElementById('modalPrev');
+    const modalNext = document.getElementById('modalNext');
+    if (modalPrev) modalPrev.addEventListener('click', () => navigateModal(-1));
+    if (modalNext) modalNext.addEventListener('click', () => navigateModal(1));
+
+    if (elements.iterateAsSource) {
+        elements.iterateAsSource.addEventListener('click', () => {
+            const image = state.currentImage; // closeModal() nulls it
+            if (!image) return;
+            closeModal();
+            setRoleImageFromUrl('source', sanitizeImageUrl(image.url));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    const favoriteImageBtn = document.getElementById('favoriteImage');
+    if (favoriteImageBtn) {
+        favoriteImageBtn.addEventListener('click', async () => {
+            if (!state.currentImage) return;
+            const isFavorite = await toggleFavorite(state.currentImage.id);
+            favoriteImageBtn.classList.toggle('active', Boolean(isFavorite));
+        });
+    }
+
+    const copyImageBtn = document.getElementById('copyImage');
+    if (copyImageBtn) {
+        copyImageBtn.addEventListener('click', async () => {
+            if (!state.currentImage) return;
+            try {
+                await copyImageToClipboard(state.currentImage.url);
+                showToast('Image copied to clipboard', 'success');
+            } catch (err) {
+                console.warn('Copy image failed:', err);
+                showToast(err.message || 'Could not copy image', 'error');
+            }
+        });
+    }
+
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            if (isImageToolsOpen()) {
+                closeImageTools();
+                return;
+            }
             closeSidebar();
             closeModal();
         }
-        if (e.key === 'Enter' && e.ctrlKey) generateImages();
+        if (elements.imageModal.classList.contains('active') && !isImageToolsOpen()) {
+            if (e.key === 'ArrowLeft') navigateModal(-1);
+            if (e.key === 'ArrowRight') navigateModal(1);
+        }
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) generateImages();
     });
+
+    setupTokenSaverTip();
 
     document.addEventListener('paste', handlePaste);
 
@@ -312,8 +391,47 @@ function setupEventListeners() {
     });
 }
 
+// ===== Token-saver tip =====
+function setupTokenSaverTip() {
+    const tip = document.getElementById('tokenSaverTip');
+    if (!tip) return;
+
+    let dismissed = false;
+    try {
+        dismissed = localStorage.getItem('imagen_tip_dismissed') === 'true';
+    } catch (e) { /* storage unavailable — just show the tip */ }
+    tip.hidden = dismissed;
+
+    document.getElementById('tipCopyPrompt')?.addEventListener('click', async () => {
+        const prompt = state.orchestrator.enabled
+            ? (elements.assembledPromptPreview?.value || '').trim()
+            : elements.promptInput.value.trim();
+        if (!prompt) {
+            showToast('Nothing to copy yet — write or assemble a prompt first', 'warning');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(prompt);
+            showToast('Prompt copied — paste it into your favorite free image tool', 'success');
+        } catch (err) {
+            console.warn('Copy prompt failed:', err);
+            showToast('Could not copy the prompt', 'error');
+        }
+    });
+
+    document.getElementById('tipDismiss')?.addEventListener('click', () => {
+        tip.hidden = true;
+        try {
+            localStorage.setItem('imagen_tip_dismissed', 'true');
+        } catch (e) { /* non-fatal */ }
+    });
+}
+
 // ===== Paste Handler =====
 function handlePaste(e) {
+    // The Image Tools editor handles its own paste (loads the image to edit)
+    if (isImageToolsOpen()) return;
+
     const activeEl = document.activeElement;
     if (activeEl && activeEl.tagName === 'INPUT' && activeEl.type !== 'text') {
         return;
@@ -371,6 +489,94 @@ function setupDragAndDrop() {
     });
 
     dropZone.addEventListener('drop', handleDrop, false);
+
+    setupPageWideDrop();
+}
+
+/**
+ * Page-wide drop target: dragging an image file anywhere over the page shows
+ * a full-screen overlay; dropping adds it as a reference (manual mode), asks
+ * Source/Reference (orchestrator mode), or loads it into the Image Tools
+ * editor when that is open.
+ */
+function setupPageWideDrop() {
+    const overlay = document.createElement('div');
+    overlay.className = 'page-drop-overlay';
+    overlay.innerHTML = `
+        <div class="page-drop-overlay-inner">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <p class="page-drop-label">Drop image to add as reference</p>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Counter-based tracking: dragenter/dragleave fire on every element the
+    // cursor crosses, so a plain toggle would flicker. Listeners live on
+    // document.body because the existing preventDefaults handler there stops
+    // propagation — document-level listeners would never fire.
+    let dragDepth = 0;
+    const dragHasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+
+    document.body.addEventListener('dragenter', (e) => {
+        if (!dragHasFiles(e)) return;
+        dragDepth++;
+        const label = overlay.querySelector('.page-drop-label');
+        if (isImageToolsOpen()) {
+            label.textContent = 'Drop image to edit it';
+        } else if (state.orchestrator.enabled) {
+            label.textContent = 'Drop image — you’ll pick Source or Reference';
+        } else {
+            label.textContent = 'Drop image to add as reference';
+        }
+        overlay.classList.add('visible');
+    });
+
+    document.body.addEventListener('dragleave', () => {
+        if (dragDepth > 0) dragDepth--;
+        if (dragDepth === 0) overlay.classList.remove('visible');
+    });
+
+    document.body.addEventListener('drop', (e) => {
+        dragDepth = 0;
+        overlay.classList.remove('visible');
+        handlePageDrop(e);
+    });
+}
+
+function handlePageDrop(e) {
+    const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+
+    if (isImageToolsOpen()) {
+        import('./image-tools.js').then(({ loadFileIntoImageTools }) => loadFileIntoImageTools(files[0]));
+        return;
+    }
+
+    if (state.orchestrator.enabled) {
+        if (files.length > 1) showToast('Orchestrator mode: using the first dropped image', 'info');
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            import('./gallery.js').then(({ showRolePickerPopover }) => {
+                showRolePickerPopover(null, event.target.result);
+            });
+        };
+        reader.readAsDataURL(files[0]);
+        return;
+    }
+
+    files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            state.references.push(event.target.result);
+            renderReferenceSlots();
+        };
+        reader.readAsDataURL(file);
+    });
+    showToast(files.length + ' image(s) added as reference', 'success');
 }
 
 function handleDrop(e) {
@@ -394,6 +600,40 @@ function handleDrop(e) {
 }
 
 // ===== Reference Image Handling =====
+/**
+ * Manual reference images survive reloads the same way orchestrator images
+ * do — in the IndexedDB blob store (too large for localStorage). The value
+ * is the JSON-serialized references array under one key.
+ *
+ * Writes are blocked until hydration finishes: init() renders the (empty)
+ * slots before hydrating, and that render must not clobber the saved refs.
+ */
+let _manualRefsHydrated = false;
+
+function persistManualReferences() {
+    if (!_manualRefsHydrated) return;
+    ImagenDB.saveOrchestratorBlob('manualRefs', JSON.stringify(state.references)).catch(e =>
+        console.warn('Could not persist reference images:', e)
+    );
+}
+
+async function hydrateManualReferences() {
+    try {
+        const raw = await ImagenDB.getOrchestratorBlob('manualRefs');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                state.references = parsed.filter(r => typeof r === 'string');
+            }
+        }
+    } catch (e) {
+        console.warn('Could not restore reference images:', e);
+    } finally {
+        _manualRefsHydrated = true;
+    }
+    renderReferenceSlots();
+}
+
 function handleReferenceUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -448,6 +688,8 @@ export function renderReferenceSlots() {
     if (addInput) {
         addInput.addEventListener('change', handleReferenceUpload);
     }
+
+    persistManualReferences();
 }
 
 function removeReference(index) {

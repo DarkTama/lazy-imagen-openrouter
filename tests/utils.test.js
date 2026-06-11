@@ -6,6 +6,7 @@ import {
   approxKB,
   looksLikeRefusal,
   debounce,
+  imageFingerprint,
 } from '../src/utils.js';
 
 describe('escapeHtml', () => {
@@ -124,6 +125,30 @@ describe('looksLikeRefusal', () => {
     expect(looksLikeRefusal(null)).toBe(false);
     expect(looksLikeRefusal('')).toBe(false);
     expect(looksLikeRefusal(undefined)).toBe(false);
+  });
+});
+
+describe('imageFingerprint', () => {
+  it('is stable for the same input', () => {
+    const uri = 'data:image/png;base64,' + 'A'.repeat(5000);
+    expect(imageFingerprint(uri)).toBe(imageFingerprint(uri));
+  });
+
+  it('distinguishes different URIs of the same length', () => {
+    const a = 'data:image/png;base64,' + 'A'.repeat(5000) + 'X';
+    const b = 'data:image/png;base64,' + 'A'.repeat(5000) + 'Y';
+    expect(imageFingerprint(a)).not.toBe(imageFingerprint(b));
+  });
+
+  it('handles short strings and empty input', () => {
+    expect(imageFingerprint('abc')).toBe('3:abc:abc');
+    expect(imageFingerprint('')).toBe('');
+    expect(imageFingerprint(null)).toBe('');
+  });
+
+  it('stays tiny even for megabyte inputs', () => {
+    const big = 'data:image/png;base64,' + 'B'.repeat(2_000_000);
+    expect(imageFingerprint(big).length).toBeLessThan(140);
   });
 });
 

@@ -1,5 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { assemblePrompt } from '../src/orchestrator.js';
+import { assemblePrompt, isVisionCacheValid } from '../src/orchestrator.js';
+
+describe('isVisionCacheValid', () => {
+  const cache = { srcFp: 'src1', refFp: 'ref1', model: 'google/gemini-2.5-flash', analysis: { source_char: 'x' } };
+
+  it('matches when fingerprints and model agree', () => {
+    expect(isVisionCacheValid(cache, 'src1', 'ref1', 'google/gemini-2.5-flash')).toBe(true);
+  });
+
+  it('rejects when either image changed', () => {
+    expect(isVisionCacheValid(cache, 'src2', 'ref1', 'google/gemini-2.5-flash')).toBe(false);
+    expect(isVisionCacheValid(cache, 'src1', 'ref2', 'google/gemini-2.5-flash')).toBe(false);
+  });
+
+  it('rejects when the vision model changed', () => {
+    expect(isVisionCacheValid(cache, 'src1', 'ref1', 'openai/gpt-4o')).toBe(false);
+  });
+
+  it('rejects missing or analysis-less caches', () => {
+    expect(isVisionCacheValid(null, 'src1', 'ref1', 'm')).toBe(false);
+    expect(isVisionCacheValid({ srcFp: 'src1', refFp: 'ref1', model: 'm' }, 'src1', 'ref1', 'm')).toBe(false);
+  });
+});
 
 describe('assemblePrompt', () => {
   const mockVision = {
