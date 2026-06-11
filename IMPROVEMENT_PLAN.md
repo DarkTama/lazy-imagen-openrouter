@@ -1,8 +1,8 @@
 # Lazy Imagen OpenRouter — Improvement Plan
 
 > **Created:** 2026-05-19  
-> **Status:** Complete  
-> **Last Updated:** 2026-05-20
+> **Status:** Complete (Rounds 1–4)  
+> **Last Updated:** 2026-06-11
 
 ---
 
@@ -410,3 +410,63 @@ When generation fails with transient errors (429, 5xx), users must manually retr
 17. Upload progress feedback (3.3)
 18. Notification history (3.4)
 19. Contributor docs (5.3)
+
+---
+
+## Round 2 — Shipped 2026-06-11
+
+A second round of features and fixes, delivered in one batch:
+
+| # | Item | Status |
+|---|------|--------|
+| R2.1 | Fix notification panel/badge stuck visible (CSS `[hidden]` overridden by `display:flex`) | ✅ Done |
+| R2.2 | Persist notification history to localStorage | ✅ Done |
+| R2.3 | **Image Tools: client-side upscaler** (pica/Lanczos, 2×–4×, sharpen, compare, save-to-gallery) | ✅ Done |
+| R2.4 | **Image Tools: background removal** (border flood-fill auto-detect, keep/remove/smart brushes, feather, undo/redo, transparent PNG) | ✅ Done |
+| R2.5 | Help guide modal + first-visit welcome onboarding (`?` shortcut) | ✅ Done |
+| R2.6 | Cost estimate beside Generate (curated per-image prices) | ✅ Done |
+| R2.7 | Copy image to clipboard (card + viewer) | ✅ Done |
+| R2.8 | Prev/Next navigation in the image viewer (buttons + arrow keys) | ✅ Done |
+| R2.9 | Cmd+Enter generates on macOS | ✅ Done |
+| R2.10 | Token-saver tip with one-click Copy prompt | ✅ Done |
+| R2.11 | Manual reference images persist across reloads (IndexedDB) | ✅ Done |
+| R2.12 | Gallery search (prompt/model), model filter, favorites + favorites-only filter | ✅ Done |
+| R2.13 | Page-wide drag & drop with full-screen overlay (mode-aware) | ✅ Done |
+| R2.14 | PWA: manifest, icons, service worker, offline app shell (vite-plugin-pwa) | ✅ Done |
+| R2.15 | Docs refreshed (README, CONTRIBUTING) | ✅ Done |
+
+---
+
+## Round 3 — Shipped 2026-06-11 (Orchestrator focus)
+
+| # | Item | Status |
+|---|------|--------|
+| R3.1 | Fix broken-image icons + stray × on empty Source/Reference dropzones (CSS `[hidden]` override) | ✅ Done |
+| R3.2 | Token-saver tip now also shows in Orchestrator mode (under the Assembled Prompt) | ✅ Done |
+| R3.3 | Image Tools: Upscale and Background Removal tabs keep separate images | ✅ Done |
+| R3.4 | Image Tools: × Change image button (no more close-and-reopen) | ✅ Done |
+| R3.5 | Background removal wipe guard — reverts + explains instead of a blank checkerboard | ✅ Done |
+| R3.6 | Compare slider (split view, drag on image or slider) replaces hold-to-compare | ✅ Done |
+| R3.7 | Art Style chips show an obvious selected state (`:has` styling) | ✅ Done |
+| R3.8 | Orchestrator mobile pass — side-by-side slots, compact toggle grid, 44px targets, 480px tier | ✅ Done |
+| R3.9 | Readiness chips (Source/Reference/API key/model) + sticky mobile Generate footer | ✅ Done |
+| R3.10 | ⇄ Swap Source/Reference + All/None + transfer count | ✅ Done |
+| R3.11 | Assembled-prompt toolbar: char count, Copy, stale badge, Re-analyze | ✅ Done |
+| R3.12 | **Cached vision analysis — settings-only re-assembly is instant and free** | ✅ Done |
+| R3.13 | Drag gallery cards directly onto Source/Reference slots | ✅ Done |
+| R3.14 | Iterate: use a generated result as the new Source in one click | ✅ Done |
+| R3.15 | Workflow presets (built-in + save your own) | ✅ Done |
+| R3.16 | Recent role images quick-pick strip | ✅ Done |
+| R3.17 | Docs refreshed (README, in-app help) | ✅ Done |
+
+---
+
+## Round 4 — Shipped 2026-06-11 (Background removal overhaul)
+
+| # | Item | Status |
+|---|------|--------|
+| R4.1 | Auto-detect algorithm v2: tight per-step gate stops anti-aliased edges, slider drives global match, 16 border clusters, gated halo pass — fixes pastel/gradient and white-bg wipes (regression fixtures added) | ✅ Done |
+| R4.2 | Auto-retry at half tolerance (slider syncs) before reverting a wiped result | ✅ Done |
+| R4.3 | Smart select (magic wand): click selects the whole connected color region, works in both Keep and Remove modes | ✅ Done |
+| R4.4 | ✨ Optional AI assist: model repaints the background a solid key color, chroma-keyed away locally; confirmation with ≈$0.04 estimate before any charge, no auto-retry, cancellable | ✅ Done |
+| R4.5 | Docs refreshed (README, in-app help) | ✅ Done |

@@ -4,7 +4,7 @@
 
 import { state, MODEL_CONFIGS, MODEL_PROMPT_CHAR_LIMITS, DEFAULT_PROMPT_CHAR_LIMIT, PROMPT_WARN_THRESHOLD, ATTRIBUTE_LABELS } from './state.js';
 import { elements } from './elements.js';
-import { escapeHtml, formatPrice, speedGlyph, sanitizeImageUrl } from './utils.js';
+import { escapeHtml, formatPrice, speedGlyph, sanitizeImageUrl, formatUsd } from './utils.js';
 
 export function renderModelInfoCard(modelId, target, meta) {
     if (!target) return;
@@ -52,6 +52,34 @@ export function renderModelInfoCard(modelId, target, meta) {
 export function updateGeminiOptionsVisibility() {
     const isGemini = state.selectedModel.includes('gemini');
     elements.geminiOptions.style.display = isGemini ? 'flex' : 'none';
+}
+
+/**
+ * Show an approximate batch cost next to the Generate buttons. OpenRouter's
+ * pricing API does not expose a per-generated-image price (output images are
+ * billed as tokens at undisclosed rates), so the basis is the curated
+ * `approxImageCost` in MODEL_CONFIGS — hidden for models without one.
+ */
+export function renderCostEstimate() {
+    const perImage = MODEL_CONFIGS[state.selectedModel]?.approxImageCost || 0;
+    const count = state.imageCount || 1;
+    const targets = [
+        document.getElementById('costEstimate'),
+        document.getElementById('owCostEstimate')
+    ];
+    for (const el of targets) {
+        if (!el) continue;
+        if (perImage > 0) {
+            const total = perImage * count;
+            el.textContent = count > 1
+                ? `≈ $${formatUsd(total)} (${count} × $${formatUsd(perImage)})`
+                : `≈ $${formatUsd(total)}`;
+            el.hidden = false;
+            el.title = "Rough estimate from the provider's list price — actual OpenRouter billing may differ slightly";
+        } else {
+            el.hidden = true;
+        }
+    }
 }
 
 export function getPromptCharLimit() {
@@ -105,12 +133,54 @@ export function isMobileLayout() {
     return window.matchMedia('(max-width: 1024px)').matches;
 }
 
+// ===== Focus Trap =====
+const FOCUSABLE_SELECTORS = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Trap Tab focus inside a container. Returns a release function that removes
+ * the trap and restores focus to the element focused before activation.
+ */
+export function activateFocusTrap(containerEl) {
+    const previouslyFocused = document.activeElement;
+    const focusableElements = containerEl.querySelectorAll(FOCUSABLE_SELECTORS);
+    let trapHandler = null;
+
+    if (focusableElements.length > 0) {
+        trapHandler = (e) => {
+            if (e.key !== 'Tab') return;
+            const firstEl = focusableElements[0];
+            const lastEl = focusableElements[focusableElements.length - 1];
+            if (e.shiftKey) {
+                if (document.activeElement === firstEl) {
+                    e.preventDefault();
+                    lastEl.focus();
+                }
+            } else {
+                if (document.activeElement === lastEl) {
+                    e.preventDefault();
+                    firstEl.focus();
+                }
+            }
+        };
+        document.addEventListener('keydown', trapHandler);
+        focusableElements[0].focus();
+    }
+
+    return function release() {
+        if (trapHandler) {
+            document.removeEventListener('keydown', trapHandler);
+            trapHandler = null;
+        }
+        if (previouslyFocused && previouslyFocused.focus) {
+            previouslyFocused.focus();
+        }
+    };
+}
+
 // ===== Modal =====
-let _previouslyFocusedElement = null;
-let _trapFocusHandler = null;
+let _releaseFocusTrap = null;
 
 export function openModal(image) {
-    _previouslyFocusedElement = document.activeElement;
     state.currentImage = image;
     elements.modalImage.src = sanitizeImageUrl(image.url);
 
@@ -140,45 +210,48 @@ export function openModal(image) {
         ${image.references?.length > 0 ? `<p><strong>References Used:</strong> ${escapeHtml(image.references.length)}</p>` : ''}
     `;
     elements.imageModal.classList.add('active');
+    updateModalNavButtons();
 
-    // Set up focus trap
-    const modalContent = elements.imageModal.querySelector('.modal-content');
-    const focusableSelectors = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-    const focusableElements = modalContent.querySelectorAll(focusableSelectors);
+    const favoriteBtn = document.getElementById('favoriteImage');
+    if (favoriteBtn) favoriteBtn.classList.toggle('active', Boolean(image.isFavorite));
 
-    if (focusableElements.length > 0) {
-        _trapFocusHandler = (e) => {
-            if (e.key !== 'Tab') return;
-            const firstEl = focusableElements[0];
-            const lastEl = focusableElements[focusableElements.length - 1];
-            if (e.shiftKey) {
-                if (document.activeElement === firstEl) {
-                    e.preventDefault();
-                    lastEl.focus();
-                }
-            } else {
-                if (document.activeElement === lastEl) {
-                    e.preventDefault();
-                    firstEl.focus();
-                }
-            }
-        };
-        document.addEventListener('keydown', _trapFocusHandler);
-        focusableElements[0].focus();
+    // Iterate (result → orchestrator Source) only makes sense in that mode
+    const iterateBtn = document.getElementById('iterateAsSource');
+    if (iterateBtn) iterateBtn.hidden = !state.orchestrator.enabled;
+
+    // Set up focus trap (re-open while already open replaces the trap;
+    // releasing first keeps the pre-modal focus target as the restore point)
+    if (_releaseFocusTrap) {
+        _releaseFocusTrap();
     }
+    const modalContent = elements.imageModal.querySelector('.modal-content');
+    _releaseFocusTrap = activateFocusTrap(modalContent);
+}
+
+/** Step to the previous (-1) or next (+1) gallery image while the viewer is open. */
+export function navigateModal(direction) {
+    if (!state.currentImage) return;
+    const idx = state.images.findIndex(img => img.id === state.currentImage.id);
+    if (idx === -1) return;
+    const next = state.images[idx + direction];
+    if (next) openModal(next);
+}
+
+function updateModalNavButtons() {
+    const prevBtn = document.getElementById('modalPrev');
+    const nextBtn = document.getElementById('modalNext');
+    if (!prevBtn || !nextBtn || !state.currentImage) return;
+    const idx = state.images.findIndex(img => img.id === state.currentImage.id);
+    prevBtn.hidden = idx <= 0;
+    nextBtn.hidden = idx === -1 || idx >= state.images.length - 1;
 }
 
 export function closeModal() {
     elements.imageModal.classList.remove('active');
     state.currentImage = null;
 
-    if (_trapFocusHandler) {
-        document.removeEventListener('keydown', _trapFocusHandler);
-        _trapFocusHandler = null;
-    }
-
-    if (_previouslyFocusedElement && _previouslyFocusedElement.focus) {
-        _previouslyFocusedElement.focus();
-        _previouslyFocusedElement = null;
+    if (_releaseFocusTrap) {
+        _releaseFocusTrap();
+        _releaseFocusTrap = null;
     }
 }

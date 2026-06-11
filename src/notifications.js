@@ -7,7 +7,37 @@ import { setNotificationHook } from './utils.js';
 
 const MAX_NOTIFICATIONS = 50;
 const MAX_MESSAGE_LENGTH = 200;
+const STORAGE_KEY = 'imagen_notifications';
 let notifications = [];
+
+function persistNotifications() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
+    } catch (e) {
+        console.warn('Failed to persist notifications:', e);
+    }
+}
+
+export function hydrateNotifications() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+        notifications = parsed
+            .filter(n => n && typeof n.message === 'string')
+            .slice(0, MAX_NOTIFICATIONS)
+            .map(n => ({
+                id: n.id || Date.now() + Math.random(),
+                message: n.message.substring(0, MAX_MESSAGE_LENGTH + 3),
+                type: n.type || 'info',
+                timestamp: n.timestamp || new Date().toISOString(),
+                read: Boolean(n.read)
+            }));
+    } catch (e) {
+        console.warn('Failed to load notifications:', e);
+    }
+}
 
 export function addNotification(message, type) {
     let truncatedMessage = String(message || '');
@@ -25,6 +55,7 @@ export function addNotification(message, type) {
     if (notifications.length > MAX_NOTIFICATIONS) {
         notifications = notifications.slice(0, MAX_NOTIFICATIONS);
     }
+    persistNotifications();
     updateNotificationBadge();
 }
 
@@ -34,11 +65,13 @@ export function getNotifications() {
 
 export function markAllRead() {
     notifications.forEach(n => { n.read = true; });
+    persistNotifications();
     updateNotificationBadge();
 }
 
 export function clearNotifications() {
     notifications = [];
+    persistNotifications();
     updateNotificationBadge();
     renderNotificationList();
 }
@@ -60,6 +93,8 @@ export function updateNotificationBadge() {
 }
 
 export function initNotifications() {
+    hydrateNotifications();
+
     // Insert bell button into .gallery-header after .gallery-count
     const galleryHeader = document.querySelector('.gallery-header');
     if (!galleryHeader) return;
@@ -138,6 +173,9 @@ export function initNotifications() {
 
     // Hook into the toast system
     setNotificationHook(addNotification);
+
+    // Reflect any unread notifications restored from a previous session
+    updateNotificationBadge();
 }
 
 function renderNotificationList() {

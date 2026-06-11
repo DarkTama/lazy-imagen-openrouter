@@ -71,7 +71,10 @@ export const MODEL_CONFIGS = {
         maxReferences: 3,
         bestFor: 'Recommended default \u2014 fast generation and edits',
         speed: 'fast',
-        notes: 'Strong all-rounder. Supports image-to-image with up to 3 references.'
+        notes: 'Strong all-rounder. Supports image-to-image with up to 3 references.',
+        // OpenRouter's /models pricing has no per-generated-image price (output
+        // images bill as tokens), so this is the provider's list price per image.
+        approxImageCost: 0.039
     },
     'google/gemini-3.1-flash-image-preview': {
         name: 'Gemini 3.1 Flash Image (Preview)',
@@ -91,7 +94,8 @@ export const MODEL_CONFIGS = {
         maxReferences: 14,
         bestFor: 'Best for complex compositions with many references',
         speed: 'med',
-        notes: 'Supports up to 14 reference images \u2014 ideal for character sheets, mood boards.'
+        notes: 'Supports up to 14 reference images \u2014 ideal for character sheets, mood boards.',
+        approxImageCost: 0.134
     },
     'openai/gpt-5-image': {
         name: 'GPT-5 Image',
@@ -251,6 +255,7 @@ export const state = {
     modelPricing: {},
     galleryPageSize: 20,
     galleryDisplayedCount: 20,
+    galleryFilter: { text: '', model: '', favoritesOnly: false },
     orchestrator: loadOrchestratorState()
 };
 

@@ -15,13 +15,18 @@ As per the original project, this modified software remains open-source and is l
 
 ### 🧩 Orchestrator Mode
 - **No-typing image-to-image** — upload a Source image (character) and a Reference image (style/pose/clothes), tick checkboxes for what to transfer, and let a vision model assemble the prompt automatically.
-- **9 transfer toggles** — Clothing, Pose/Body, Background, Facial Expression, Hair, Lighting, Color Palette, Accessories, Camera/Framing.
-- **3-way Art Style picker** — Source, Reference, or Blend.
+- **9 transfer toggles** — Clothing, Pose/Body, Background, Facial Expression, Hair, Lighting, Color Palette, Accessories, Camera/Framing — with **All/None** quick buttons and a live count.
+- **Workflow presets** — one-click Outfit swap / Pose copy / Full style transfer / Scene swap, plus save-your-own presets.
+- **Cached vision analysis** — change toggles after assembling and **re-assemble instantly for free**; only swapping images or the vision model triggers a new paid analysis.
+- **⇄ Swap button, drag-from-gallery, Recent images strip** — get the right image into the right slot fast; an **Iterate: use as Source** button feeds a generated result back in for another pass.
+- **Readiness chips** — see at a glance what's missing (Source / Reference / API key / image-capable model) before clicking Generate.
+- **3-way Art Style picker** — Source, Reference, or Blend, with a clearly highlighted selection.
 - **Identity Lock** — choose how strictly to preserve the Source character's face (Low → Maximum).
 - **Creativity slider** — 0–100, dials between "stay faithful" and "allow creative reinterpretation".
 - **Customizable Vision Analyst** — 10 curated picks (Gemini Flash/Pro, GPT-4o, Claude Sonnet, Qwen-VL, Llama Vision) plus a free-text custom model ID override.
 - **Subject Context with web research** — describe subjects the model doesn't know, or click 🔍 to auto-research via Perplexity Sonar.
-- **Read-only prompt preview** — see exactly what was sent to the generation model.
+- **Editable prompt preview** — char count, copy button, and a "settings changed — re-assemble" badge so a stale prompt never surprises you.
+- **Mobile-friendly workspace** — side-by-side slots, compact toggle grid, sticky Generate footer at phone sizes.
 
 ### 📊 Model Info Cards
 Every model dropdown shows pricing (live, from `/api/v1/models`), best-for descriptors, speed indicator, context window, and capability summary.
@@ -42,37 +47,61 @@ Every model dropdown shows pricing (live, from `/api/v1/models`), best-for descr
 - **Aspect Ratios**: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2
 - **Batch Generation**: Up to 8 images at once
 
+### 🔍 Image Tools: Upscaler (no AI, no tokens)
+- Enlarge any image **2×–4× entirely in your browser** — classic Lanczos resampling via [pica](https://github.com/nodeca/pica), not an AI call, so it costs nothing
+- Works on gallery images or local uploads (file picker, drag & drop, paste); each tool tab keeps its own image, and **× Change image** swaps in another without reopening
+- Optional sharpening, **split-view compare slider** against the original (drag the slider or the image), PNG/JPEG export
+- Save results straight back into the gallery
+- Tip: generate at a cheap resolution, upscale locally for free
+
+### ✂️ Image Tools: Background Removal (no AI by default)
+- **Auto-detect** flood-fills the background from the image borders, tuned to stop at anti-aliased edges — solid, gradient, and pastel backdrops all work, with an adjustable tolerance slider. A wiped result auto-retries at lower tolerance, then reverts with an explanation instead of showing a blank board
+- **Keep / Remove brushes** fix anything the auto-detect missed; **Smart select (magic wand)** turns a single click into a whole-region selection that removes or restores the connected color area
+- **✨ Optional AI assist** for stubborn backgrounds: a vision model repaints the background a solid key color which is chroma-keyed away locally — **charges your OpenRouter account (≈ $0.04)** and always asks for confirmation with the estimate first
+- Edge feathering, undo/redo (`Ctrl+Z`/`Ctrl+Y`), `[` `]` brush sizing, checkerboard transparency preview
+- Exports a transparent PNG or saves back to the gallery
+
 ### 🖼️ Reference Image Support
 - Upload unlimited reference images
-- Drag & drop support
+- Drag & drop **anywhere on the page** (full-screen drop overlay), paste with `Ctrl+V`
 - Use generated images as references
+- References survive page reloads
 - Click X to remove individual references
 
 ### 💾 Persistent Storage
 - **IndexedDB storage**
 - Store hundreds of images
-- Images persist across browser sessions
+- Images, references, and notification history persist across browser sessions
 
 ### 🎯 Gallery Features
 - View all generated images
-- Delete individual images (hover to reveal 🗑️ button)
-- Click any image for full view + metadata
-- Clear entire gallery option
+- **Search** by prompt text or filter by model; **star favorites** and filter to favorites only
+- Hover actions: copy to clipboard, download, delete, use as reference, recreate, edit in Image Tools
+- Click any image for full view + metadata; flip through with `←`/`→`
+- Approximate **cost estimate** under the Generate button (for models with known per-image prices)
+- Export / import the whole gallery as JSON; clear gallery option
 
 ### ♻️ Recreate Feature
 - Click any image to restore its original settings
 - Instantly iterate on previous generations
 
+### ❓ Built-in Help & Onboarding
+- `?` button in the sidebar (or press `?`) opens a sectioned guide covering every feature
+- A welcome guide opens automatically on your first visit
+
+### 📱 Installable PWA
+- Install Imagen as an app from your browser's address bar
+- The app shell loads offline; your gallery is already local, so browsing past images works without a connection (generation still needs network)
+
 ## 🚀 Quick Start
 
 1. Clone this repository.
-2. Start a local server:
+2. Install dependencies and start the dev server (the app imports npm modules, so a plain static file server won't work):
    ```bash
-   python3 -m http.server 8080
-   # or
-   npx serve .
+   npm install
+   npm run dev
    ```
-3. Open http://localhost:8080.
+3. Open the URL Vite prints (default http://localhost:5173).
 4. Paste your OpenRouter API key into the **OpenRouter API Key** field in the sidebar, then click **Save Key**. The key is stored only in your browser's `localStorage` — it never leaves your machine except in API requests to OpenRouter.
 5. Pick a **Model** from the dropdown. The info card below shows what each model is best for, its speed, and (once pricing loads) its cost per million tokens / per image.
 6. Type a prompt in the main textarea and click **Generate**.
@@ -131,11 +160,11 @@ In the sidebar, find the **Orchestrator Mode** section and flip the toggle switc
 - **Source Image (Character)** — the person/character whose face and identity you want to keep.
 - **Reference Image (Style/Pose/Clothes)** — the image with elements you want to transfer.
 
-Either click the slot or drag-drop an image file onto it. Click the **×** in the corner to clear a slot.
+Either click the slot, drag-drop an image file onto it, or **drag a gallery card straight onto the slot**. Click the **×** in the corner to clear a slot, the **⇄** button between the slots to swap the two images, or pick from the **Recent** strip (your last six role images) under the slots.
 
 ### Step 3 — Pick what to transfer
 
-The **Transfer from Reference** checkboxes control which attributes come from the Reference image. Unchecked attributes stay from the Source.
+The **Transfer from Reference** checkboxes control which attributes come from the Reference image. Unchecked attributes stay from the Source. Use the **All / None** buttons for quick sweeps, or apply a **preset** chip (Outfit swap, Pose copy, Full style transfer, Scene swap) — "+ Save current…" remembers your own combinations.
 
 | Toggle | When checked | When unchecked |
 | --- | --- | --- |
@@ -208,7 +237,11 @@ The subject context is prepended to the assembled prompt as a grounding statemen
 
 ### Step 8 — Generate
 
-Click **Generate**. You'll see the button label change to **Analyzing images…** while the vision call runs, then the assembled prompt appears in the read-only main textarea AND in the **Assembled prompt preview** at the bottom of the orchestrator panel. The actual image generation starts immediately after.
+Click **Generate**. You'll see the button label change to **Analyzing images…** while the vision call runs, then the assembled prompt appears in the **Assembled prompt preview**. The actual image generation starts immediately after. The **readiness chips** in the footer show beforehand whether anything is missing (images, API key, image-capable model).
+
+**Re-assembling is free:** the vision analysis of your image pair is cached. If you change toggles, style, identity lock, creativity or notes afterwards, a *"settings changed — re-assemble (free)"* badge appears — clicking Assemble then rebuilds the prompt instantly with **zero tokens spent**. Only changing an image or the vision analyst triggers a new paid analysis (the **Re-analyze** button forces one manually).
+
+**Iterating:** open any generated image and click **Iterate: use as Source** to feed the result back in as the new Source for another pass.
 
 ### Reading the Model Info card
 
@@ -243,11 +276,47 @@ The orchestrator falls back to whatever's in the textarea, so a previous assembl
 
 **"Doesn't support image input"** — Orchestrator Mode requires a generation model that accepts reference images. Switch to a Gemini, GPT-5 Image, or other vision-capable model. Flux, Seedream, and Riverflow are text-to-image only.
 
-**"Could not save orchestrator state — uploaded images may be too large"** — base64-encoded images can exceed `localStorage`'s ~5MB quota. Your Source/Reference images won't persist across refreshes, but the current session still works fine. Use smaller images, or accept the loss.
+**"Could not save orchestrator state — uploaded images may be too large"** — orchestrator settings live in `localStorage` (~5MB quota) while the Source/Reference images themselves persist in IndexedDB. If this appears, the settings snapshot failed but the current session still works fine; the images usually survive a refresh regardless.
 
 **Research button stays disabled** — type at least a few characters into the Subject Context field. The button enables once the field is non-empty.
 
 **The assembled prompt doesn't match my toggles** — the assembled prompt only refreshes when you click Generate (since assembling requires a vision call). Click Generate to see the latest prompt in the preview.
+
+## 🧰 Image Tools — User Guide
+
+Both tools run **entirely in your browser** with classic image processing (no AI, no API calls, zero credits). Open them from:
+
+- the **sliders icon** on any gallery card (hover to reveal),
+- the **Edit** button in the full-image view,
+- the **Image Tools** button in the gallery toolbar — this one also takes local files (click, drag-drop, or paste).
+
+Opening from the gallery loads the image into **both** tools; uploads inside the editor go to the active tab only, so the Upscaler and Background Removal can work on different images. **× Change image** (top-left of the canvas) clears the active tab back to the upload prompt.
+
+### Upscaler
+
+1. Pick a scale (2×/3×/4× — options that would exceed 32 MP or 8192px are disabled with a reason).
+2. Optionally tick **Sharpen** and pick PNG or JPEG output.
+3. Click **Upscale**. Resampling runs in web workers; big images take a few seconds and can be cancelled.
+4. **Compare with original** opens a split view — drag the slider (or the image itself) to move the divider between the naive original and the resampled result. Then **Download** or **Save to Gallery**.
+
+💡 Money-saver: generate at 1K, then upscale locally for free instead of paying for a 2K/4K generation. There's also a tip under the Generate button with one-click **Copy prompt** — paste it (plus your images) into Google Gemini or another free tool and spend zero OpenRouter credits.
+
+### Background Removal
+
+1. Opening the tab runs **Auto-detect** immediately: it samples the image borders and flood-fills everything that looks like background, stopping at anti-aliased subject edges. Raise or lower **Tolerance** and re-run to tune it. A result that would wipe almost the whole image automatically retries at half tolerance (the slider follows), and reverts with a warning if that fails too.
+2. Fix the rest by hand: the **Remove** brush erases, **Keep** restores. Tick **Smart select (magic wand)** and a single click removes or restores the *whole connected color region* — ideal for clearing big background patches or rescuing an over-removed area in one click.
+3. For stubborn, busy backgrounds, **✨ AI assist** sends the image to Gemini via OpenRouter to repaint the background a solid key color, which is then removed locally. **This costs ≈ $0.04 per attempt** — a confirmation with the estimate appears before anything is charged, and the AI's version of the image replaces your working copy.
+4. **Edge feather** softens the cutout boundary. `Ctrl+Z`/`Ctrl+Y` undo/redo whole strokes; `[` `]` resize the brush.
+5. **Download PNG** (with transparency) or **Save to Gallery**.
+
+## 📱 Install as App (PWA)
+
+Imagen ships a web-app manifest and service worker:
+
+- In Chrome/Edge, click the **install icon** in the address bar (or ⋮ → *Install app*). On iOS Safari: Share → *Add to Home Screen*.
+- The app shell is cached, so the UI loads offline; your gallery already lives in IndexedDB, so browsing past images works without a connection.
+- Generation, pricing, and research still require network (they call OpenRouter).
+- Updates install automatically on the next load after a deploy.
 
 ## 🔒 Privacy & Security
 
@@ -262,15 +331,20 @@ This is a **100% client-side application**:
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl + Enter` | Generate images |
-| `Escape` | Close image modal |
+| `Ctrl/Cmd + Enter` | Generate images |
+| `Escape` | Close any modal |
+| `?` | Open the help guide |
+| `←` / `→` | Previous / next image in the viewer |
+| `Ctrl/Cmd + V` | Paste image as reference (or into Image Tools when open) |
+| `[` / `]` | Shrink / grow the brush (Background Removal) |
+| `Ctrl + Z` / `Ctrl + Y` | Undo / redo brush strokes (Background Removal) |
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: ES-module vanilla HTML/CSS/JavaScript (no runtime dependencies)
-- **Build / Dev**: Vite (bundling, content-hashed assets) + Vitest (tests) + ESLint + Prettier — dev-only
+- **Frontend**: ES-module vanilla HTML/CSS/JavaScript — single runtime dependency: [pica](https://github.com/nodeca/pica) for the client-side upscaler
+- **Build / Dev**: Vite (bundling, content-hashed assets) + vite-plugin-pwa (manifest + service worker) + Vitest (tests) + ESLint + Prettier — dev-only
 - **API**: OpenRouter for model access
-- **Storage**: IndexedDB for image persistence
+- **Storage**: IndexedDB for images/references + localStorage for settings and notification history
 - **Styling**: Custom CSS with CSS variables
 - **CI / Deploy**: GitHub Actions → GitHub Pages
 
@@ -284,10 +358,14 @@ lazy-imagen-openrouter/
 │       └── deploy.yml      # Auto-deploy to GitHub Pages on push to master
 ├── src/                    # ES module sources (see Development → Architecture)
 ├── tests/                  # Vitest test suites
+├── public/
+│   └── icons/              # PWA icons (generated by scripts/generate-icons.mjs)
+├── scripts/
+│   └── generate-icons.mjs  # One-off icon generation (sharp)
 ├── assets/                 # Screenshots
 ├── index.html              # Main entry point
 ├── favicon.svg
-├── vite.config.js
+├── vite.config.js          # Vite + PWA (manifest, service worker) config
 ├── vitest.config.js
 ├── package.json
 └── README.md               # This file — full user guide
@@ -316,7 +394,7 @@ npm run format     # Format with Prettier
 
 ### Architecture
 
-All source code lives in `src/` as ES modules with no runtime dependencies:
+All source code lives in `src/` as ES modules. The only runtime dependency is `pica` (image resampling for the upscaler):
 
 | Module | Responsibility |
 |--------|---------------|
@@ -324,14 +402,18 @@ All source code lives in `src/` as ES modules with no runtime dependencies:
 | `orchestrator.js` | Orchestrator mode: prompt assembly, error classification |
 | `api.js` | OpenRouter API fetch wrappers |
 | `retry.js` | Exponential backoff retry utility |
-| `utils.js` | Pure utilities (escapeHtml, debounce, sanitizeImageUrl, etc.) |
+| `utils.js` | Pure utilities (escapeHtml, debounce, sanitizeImageUrl, clipboard, etc.) |
 | `state.js` | Constants, model configs, shared state |
 | `elements.js` | Cached DOM references |
 | `db.js` | IndexedDB wrapper for image persistence |
-| `ui.js` | Sidebar, modal, layout helpers |
-| `gallery.js` | Gallery rendering and management |
+| `ui.js` | Sidebar, modal, focus trap, cost estimate, layout helpers |
+| `gallery.js` | Gallery rendering, search/filter, favorites, management |
+| `image-tools.js` | Image Tools editor shell (upscale + background removal UI) |
+| `upscaler.js` | Client-side upscaling via pica (Lanczos resampling) |
+| `bg-removal.js` | Pure background-removal algorithms (flood fill, masks, brushes) |
+| `help.js` | Help guide modal and first-visit onboarding |
 | `history.js` | Prompt history with favorites |
-| `notifications.js` | Notification history |
+| `notifications.js` | Notification history (persisted to localStorage) |
 | `export-import.js` | Gallery export/import |
 | `accessibility.js` | ARIA patterns, keyboard navigation |
 | `theme.js` | Dark/light theme toggle |
@@ -342,7 +424,9 @@ The app relies on modern web APIs:
 
 - ES modules (`<script type="module">`)
 - IndexedDB (image persistence)
-- Clipboard API (copy prompt/image)
+- Clipboard API with `ClipboardItem` (copy prompt/image — image copy requires Chrome/Edge/Safari; Firefox needs a flag)
+- Pointer Events + Canvas 2D (Image Tools brushes and compositing)
+- Service Worker (PWA install + offline shell — optional, the app works without it)
 - CSS custom properties (theming)
 - Optional chaining and nullish coalescing (ES2020)
 
