@@ -1,25 +1,17 @@
 /**
  * API calls for image generation, vision analysis, subject research, and model fetching.
- * Image generation uses the active provider. Vision/research/AI-assist always use OpenRouter.
+ * All calls (generation, vision, research) use the active provider's endpoint and key.
  */
 
-import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, loadApiKeyForProvider } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal } from './utils.js';
 import { retryWithBackoff } from './retry.js';
 
-// Returns the active provider's base URL and auth headers (for image generation).
+// Returns the active provider's base URL and auth headers.
 function providerFetchArgs() {
     const prov = getProvider(state.provider);
     return { base: prov.base, headers: prov.headers(state.apiKey) };
-}
-
-// Vision analysis, subject research, and AI-assist always route through OpenRouter
-// regardless of which image provider is active, because vision models (Gemini, GPT-4o, etc.)
-// are only available on OpenRouter.
-function openrouterFetchArgs() {
-    const prov = getProvider('openrouter');
-    return { base: prov.base, headers: prov.headers(loadApiKeyForProvider('openrouter')) };
 }
 
 // ===== Structured API Error =====
@@ -66,7 +58,7 @@ Output strictly valid JSON. No prose around it. No code fences.`;
 export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
     let response;
     try {
-        const { base, headers } = openrouterFetchArgs();
+        const { base, headers } = providerFetchArgs();
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -149,7 +141,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
 export async function researchSubject(subjectText, modelId) {
     let response;
     try {
-        const { base, headers } = openrouterFetchArgs();
+        const { base, headers } = providerFetchArgs();
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -252,7 +244,7 @@ export function extractImageFromMessage(message) {
 export async function runImageEdit(imageDataUri, instruction, modelId, { signal } = {}) {
     let response;
     try {
-        const { base, headers } = openrouterFetchArgs();
+        const { base, headers } = providerFetchArgs();
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             signal,
@@ -530,7 +522,7 @@ export async function fetchModelPricing() {
     }
 }
 
-// ===== Live Model Fetchers (Phase 3) =====
+// ===== Live Model Fetchers =====
 
 function modelListCacheKey(providerId, kind) {
     return `${MODEL_LIST_CACHE_KEY_PREFIX}${providerId}_${kind}`;
@@ -607,6 +599,49 @@ function normalizeNanoImageModel(m, subscriptionSet) {
             : (parseInt(sp.max_images) || 0),
         subscription: sub
     };
+}
+
+/**
+ * Fetch chat/vision models for the active provider.
+ * OpenRouter: returns the hardcoded VISION_MODELS (no network call needed).
+ * NanoGPT: fetches from /api/v1/models, filters out image-only models.
+ * Pass force:true to bypass the 24h sessionStorage cache.
+ */
+export async function fetchChatModels(providerId, { force = false } = {}) {
+    if (providerId !== 'nanogpt') {
+        return VISION_MODELS;
+    }
+
+    if (force) sessionStorage.removeItem(modelListCacheKey('nanogpt', 'chat'));
+
+    const cached = readModelListCache('nanogpt', 'chat');
+    if (cached) return cached;
+
+    const prov = getProvider('nanogpt');
+    const imageIds = new Set(SUBSCRIPTION_IMAGE_ALLOWLIST.map(m => m.id));
+
+    try {
+        const resp = await fetch(prov.modelsUrl, { headers: prov.headers(state.apiKey) });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const list = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+        const models = list
+            .filter(m => m?.id && !imageIds.has(m.id))
+            .map(m => ({
+                id: m.id,
+                name: m.id,
+                kind: 'vision',
+                provider: 'nanogpt',
+                bestFor: 'Chat & vision',
+                speed: 'fast',
+                price: null
+            }));
+        if (models.length > 0) writeModelListCache('nanogpt', 'chat', models);
+        return models;
+    } catch (e) {
+        console.warn('fetchChatModels failed:', e);
+        return [];
+    }
 }
 
 /**

@@ -7,11 +7,11 @@ import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
-import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, runWithConcurrency } from './api.js';
+import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
 import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal } from './ui.js';
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
-import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl } from './orchestrator.js';
+import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl, rebuildOrchestratorModelPickers } from './orchestrator.js';
 import { createModelPicker } from './model-picker.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { initHistory } from './history.js';
@@ -161,7 +161,14 @@ function switchProvider(newProviderId) {
 
     syncGenerationPickerConstraints();
 
-    // If we haven't fetched live models for this provider yet, do it now
+    // Rebuild vision/research pickers immediately with whatever is cached, then fetch fresh
+    rebuildOrchestratorModelPickers(newProviderId);
+    fetchChatModels(newProviderId).then(models => {
+        state.fetchedModels[newProviderId].vision = models;
+        rebuildOrchestratorModelPickers(newProviderId);
+    });
+
+    // If we haven't fetched live image models for this provider yet, do it now
     if (!state.fetchedModels[newProviderId].image.length) {
         fetchImageModels(newProviderId).then(models => {
             state.fetchedModels[newProviderId].image = models;
@@ -266,6 +273,11 @@ async function init() {
         rebuildGenerationModelOptions(state.provider);
         renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
         renderCostEstimate();
+    });
+
+    fetchChatModels(state.provider).then(models => {
+        state.fetchedModels[state.provider].vision = models;
+        rebuildOrchestratorModelPickers(state.provider);
     });
 }
 
@@ -417,15 +429,15 @@ function setupEventListeners() {
             const testUrl = prov.modelsUrl || prov.imageModelsUrl;
             const res = await fetch(testUrl, { headers: prov.headers(key) });
             if (res.ok) {
-                showToast('Connection successful — API key is valid', 'success');
+                showToast(`${prov.label} connection successful — API key is valid`, 'success');
             } else {
                 const body = await res.text().catch(() => '');
                 let msg = '';
                 try { msg = JSON.parse(body).error?.message || ''; } catch (_) {}
-                showToast(`Key rejected (HTTP ${res.status})${msg ? ': ' + msg : ''}`, 'error');
+                showToast(`${prov.label} key rejected (HTTP ${res.status})${msg ? ': ' + msg : ''}`, 'error');
             }
         } catch (e) {
-            showToast('Connection failed: ' + e.message, 'error');
+            showToast(`${getProvider(state.provider).label} connection failed: ` + e.message, 'error');
         } finally {
             btn.disabled = false;
             btn.textContent = 'Test Connection';

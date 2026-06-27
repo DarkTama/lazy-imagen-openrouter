@@ -2,15 +2,48 @@
  * Orchestrator mode logic.
  */
 
-import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES, loadApiKeyForProvider } from './state.js';
+import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES } from './state.js';
 import { createModelPicker } from './model-picker.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
 import { escapeHtml, sanitizeImageUrl, debounce, showToast, formatPrice, speedGlyph, readFileAsDataURI, compressDataUri, compressImageFile, approxKB, imageFingerprint } from './utils.js';
-import { ApiError, runVisionAnalysis, researchSubject } from './api.js';
+import { ApiError, runVisionAnalysis, researchSubject, fetchChatModels } from './api.js';
 import { isMobileLayout, renderModelInfoCard } from './ui.js';
 
 let _visionPicker = null;
+
+export function populateResearchModels(providerId) {
+    if (!elements.researchModelSelect) return;
+    elements.researchModelSelect.innerHTML = '';
+    const isNano = providerId === 'nanogpt';
+    const models = isNano ? state.fetchedModels.nanogpt.vision : RESEARCH_MODELS;
+    if (isNano && models.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'Click ↻ in Vision Analyst to fetch NanoGPT models';
+        opt.disabled = true;
+        elements.researchModelSelect.appendChild(opt);
+        return;
+    }
+    const current = state.orchestrator.researchModel;
+    models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name + (m.bestFor ? ' — ' + m.bestFor : '');
+        if (m.id === current) opt.selected = true;
+        elements.researchModelSelect.appendChild(opt);
+    });
+}
+
+export function rebuildOrchestratorModelPickers(providerId) {
+    if (_visionPicker) {
+        const models = providerId === 'nanogpt'
+            ? state.fetchedModels.nanogpt.vision
+            : VISION_MODELS;
+        _visionPicker.refresh(models);
+    }
+    populateResearchModels(providerId);
+}
 
 export function setupOrchestrator() {
     const o = state.orchestrator;
@@ -22,7 +55,9 @@ export function setupOrchestrator() {
         container: elements.visionModelOptions,
         trigger: elements.visionModelTrigger,
         valueDisplay: elements.visionModelValue,
-        getModels: () => VISION_MODELS,
+        getModels: () => state.provider === 'nanogpt'
+            ? state.fetchedModels.nanogpt.vision
+            : VISION_MODELS,
         getSelected: () => state.orchestrator.visionModel,
         onSelect(id) {
             state.orchestrator.visionModel = id;
@@ -33,18 +68,17 @@ export function setupOrchestrator() {
         },
         kind: 'vision',
         searchPlaceholder: 'Search vision models…',
+        onRefresh: async () => {
+            const models = await fetchChatModels(state.provider, { force: true });
+            state.fetchedModels[state.provider].vision = models;
+            populateResearchModels(state.provider);
+            return models;
+        }
     });
     const currentVision = VISION_MODELS_BY_ID[o.visionModel] || VISION_MODELS[0];
     elements.visionModelValue.textContent = currentVision.name;
 
-    elements.researchModelSelect.innerHTML = '';
-    RESEARCH_MODELS.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.id;
-        opt.textContent = m.name + ' — ' + m.bestFor;
-        if (m.id === o.researchModel) opt.selected = true;
-        elements.researchModelSelect.appendChild(opt);
-    });
+    populateResearchModels(state.provider);
 
     applyOrchestratorMode(o.enabled);
     elements.orchestratorToggle.checked = o.enabled;
@@ -832,8 +866,8 @@ export function setupOrchestratorEventListeners(generateImages) {
     elements.researchSubjectBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!loadApiKeyForProvider('openrouter')) {
-            showToast('Subject research requires an OpenRouter API key — add one in the sidebar', 'error');
+        if (!state.apiKey) {
+            showToast('Save your API key first', 'error');
             return;
         }
         const current = elements.subjectContext.value.trim();
@@ -981,8 +1015,8 @@ export async function assembleOrchestratorPrompt() {
     // still matches this image pair + model, skip the API entirely.
     const cached = getValidVisionCache();
 
-    if (!cached && !loadApiKeyForProvider('openrouter')) {
-        showToast('Vision analysis requires an OpenRouter API key — add one in the sidebar', 'error');
+    if (!cached && !state.apiKey) {
+        showToast('Save your API key first', 'error');
         return null;
     }
     hideOrchestratorPanel();
