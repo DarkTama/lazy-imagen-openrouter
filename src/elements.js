@@ -6,6 +6,11 @@
 export const elements = {};
 
 export function initElements() {
+    // Sidebar — Provider
+    elements.providerToggle = document.getElementById('providerToggle');
+    elements.apiKeyLabel = document.getElementById('apiKeyLabel');
+    elements.apiKeyNote = document.getElementById('apiKeyNote');
+
     // Sidebar
     elements.modelSelectContainer = document.getElementById('modelSelectContainer');
     elements.modelSelectTrigger = document.getElementById('modelSelectTrigger');

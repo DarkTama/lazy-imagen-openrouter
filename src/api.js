@@ -2,9 +2,16 @@
  * All fetch calls to OpenRouter.
  */
 
-import { state, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MAX_CONCURRENT_GENERATIONS } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS } from './state.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal } from './utils.js';
 import { retryWithBackoff } from './retry.js';
+
+// Returns the active provider's base URL and auth headers.
+function providerFetchArgs() {
+    const prov = getProvider(state.provider);
+    return { base: prov.base, headers: prov.headers(state.apiKey) };
+}
 
 // ===== Structured API Error =====
 export class ApiError extends Error {
@@ -50,14 +57,10 @@ Output strictly valid JSON. No prose around it. No code fences.`;
 export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
     let response;
     try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const { base, headers } = providerFetchArgs();
+        response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${state.apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.origin,
-                'X-Title': 'Imagen Internal Tool'
-            },
+            headers,
             body: JSON.stringify({
                 model: modelId,
                 messages: [
@@ -137,14 +140,10 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
 export async function researchSubject(subjectText, modelId) {
     let response;
     try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const { base, headers } = providerFetchArgs();
+        response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${state.apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.origin,
-                'X-Title': 'Imagen Internal Tool'
-            },
+            headers,
             body: JSON.stringify({
                 model: modelId,
                 messages: [
@@ -244,15 +243,11 @@ export function extractImageFromMessage(message) {
 export async function runImageEdit(imageDataUri, instruction, modelId, { signal } = {}) {
     let response;
     try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const { base, headers } = providerFetchArgs();
+        response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             signal,
-            headers: {
-                'Authorization': `Bearer ${state.apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.origin,
-                'X-Title': 'Imagen Internal Tool'
-            },
+            headers,
             body: JSON.stringify({
                 model: modelId,
                 messages: [
@@ -300,7 +295,31 @@ export async function runImageEdit(imageDataUri, instruction, modelId, { signal 
     return imageUrl;
 }
 
+function nanoSizeFor(st) {
+    const RATIO_MAP = {
+        '1:1':  '1024x1024',
+        '16:9': '1344x768',
+        '9:16': '768x1344',
+        '4:3':  '1152x896',
+        '3:4':  '896x1152',
+        '3:2':  '1216x832',
+        '2:3':  '832x1216',
+    };
+    const base = RATIO_MAP[st.aspectRatio] || '1024x1024';
+    if (st.imageQuality === '2K') {
+        const [w, h] = base.split('x').map(Number);
+        return `${Math.round(w * 1.5)}x${Math.round(h * 1.5)}`;
+    }
+    if (st.imageQuality === '4K') {
+        const [w, h] = base.split('x').map(Number);
+        return `${Math.round(w * 2)}x${Math.round(h * 2)}`;
+    }
+    return base;
+}
+
 export async function generateSingleImage(prompt, modelConfig, { onRetry } = {}) {
+    const strategy = getProvider(state.provider).imageStrategy;
+
     const doGenerate = async () => {
     const content = [];
 
@@ -351,14 +370,10 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
     const modelId = state.selectedModel;
     let response;
     try {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        const { base, headers } = providerFetchArgs();
+        response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${state.apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.origin,
-                'X-Title': 'Imagen Internal Tool'
-            },
+            headers,
             body: JSON.stringify(requestBody)
         });
     } catch (netErr) {
@@ -404,13 +419,65 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
     });
     };
 
+    const doGenerateNano = async () => {
+        const { headers } = providerFetchArgs();
+        const prov = getProvider('nanogpt');
+        const modelId = state.selectedModel;
+        const body = {
+            model: modelId,
+            prompt,
+            n: 1,
+            size: nanoSizeFor(state),
+            response_format: 'b64_json'
+        };
+        if (modelConfig.supportsImageInput && state.references.length) {
+            let refs = state.references.filter(Boolean);
+            if (modelConfig.maxReferences === 1) refs = refs.slice(0, 1);
+            if (refs.length) body.imageDataUrls = refs;
+        }
+        let response;
+        try {
+            response = await fetch(prov.imagesUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+        } catch (netErr) {
+            throw new ApiError({
+                kind: 'network', stage: 'generation', modelId,
+                message: netErr.message || 'Network request failed',
+                body: String(netErr)
+            });
+        }
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => '');
+            let parsedMsg;
+            try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
+            throw new ApiError({
+                kind: 'http', stage: 'generation', modelId,
+                status: response.status,
+                message: parsedMsg || `HTTP ${response.status}`,
+                body: bodyText
+            });
+        }
+        const data = await response.json();
+        const b64 = data?.data?.[0]?.b64_json;
+        if (!b64) {
+            throw new ApiError({
+                kind: 'no-image', stage: 'generation', modelId,
+                message: 'No image in NanoGPT response',
+                body: JSON.stringify(data, null, 2)
+            });
+        }
+        return `data:image/png;base64,${b64}`;
+    };
+
+    const fn = strategy === 'images-endpoint' ? doGenerateNano : doGenerate;
+
     if (state.autoRetryEnabled) {
-        return retryWithBackoff(doGenerate, { onRetry });
+        return retryWithBackoff(fn, { onRetry });
     }
-    return doGenerate();
+    return fn();
 }
 
 export async function fetchModelPricing() {
+    if (state.provider !== 'openrouter') return {};
     try {
         const cached = sessionStorage.getItem(MODEL_PRICING_CACHE_KEY);
         if (cached) {
@@ -451,6 +518,162 @@ export async function fetchModelPricing() {
         console.warn('Failed to fetch model pricing:', e);
         state.modelPricing = {};
         return {};
+    }
+}
+
+// ===== Live Model Fetchers (Phase 3) =====
+
+function modelListCacheKey(providerId, kind) {
+    return `${MODEL_LIST_CACHE_KEY_PREFIX}${providerId}_${kind}`;
+}
+
+function readModelListCache(providerId, kind) {
+    try {
+        const raw = sessionStorage.getItem(modelListCacheKey(providerId, kind));
+        if (!raw) return null;
+        const { models, ts } = JSON.parse(raw);
+        if (Date.now() - ts < MODEL_LIST_TTL_MS) return models;
+    } catch (e) { /* ignore */ }
+    return null;
+}
+
+function writeModelListCache(providerId, kind, models) {
+    try {
+        sessionStorage.setItem(modelListCacheKey(providerId, kind), JSON.stringify({ models, ts: Date.now() }));
+    } catch (e) { console.warn('Model list cache write failed:', e); }
+}
+
+async function fetchNanoSubscriptionIds() {
+    try {
+        const prov = getProvider('nanogpt');
+        const resp = await fetch(prov.subscriptionModelsUrl, { headers: prov.headers(state.apiKey) });
+        if (!resp.ok) return new Set();
+        const data = await resp.json();
+        const list = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+        return new Set(list.map(m => (typeof m === 'string' ? m : m.id)).filter(Boolean));
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function isSubscriptionId(id, subscriptionSet) {
+    return subscriptionSet.has(id) || SUBSCRIPTION_IMAGE_ALLOWLIST.some(a => a.id === id);
+}
+
+function normalizeOpenRouterModel(m) {
+    const p = m.pricing || {};
+    return {
+        id: m.id,
+        name: m.name || m.id,
+        kind: 'image',
+        provider: 'openrouter',
+        price: {
+            prompt: parseFloat(p.prompt) || 0,
+            completion: parseFloat(p.completion) || 0,
+            perImage: parseFloat(p.image) || 0,
+            request: parseFloat(p.request) || 0
+        },
+        supportsImageInput: Boolean(m.architecture?.modality?.startsWith('text+image')),
+        maxReferences: 0,
+        subscription: false
+    };
+}
+
+function normalizeNanoImageModel(m, subscriptionSet) {
+    const curated = SUBSCRIPTION_IMAGE_ALLOWLIST.find(a => a.id === m.id);
+    const sub = isSubscriptionId(m.id, subscriptionSet);
+    const p = m.pricing || {};
+    const sp = m.supported_parameters || {};
+    return {
+        id: m.id,
+        name: m.name || m.id,
+        kind: 'image',
+        provider: 'nanogpt',
+        price: sub ? null : { perImage: parseFloat(p.image || p.cost || p.price_per_image) || null },
+        supportsImageInput: curated
+            ? curated.supportsImageInput
+            : Boolean(m.supportsImageInput || m.supports_image_input || sp.image_input),
+        maxReferences: curated
+            ? curated.maxReferences
+            : (parseInt(sp.max_images) || 0),
+        subscription: sub
+    };
+}
+
+/**
+ * Fetch live image-generation models for the given provider.
+ * Returns a normalized array usable by the picker.
+ * Falls back to the curated list on any fetch failure.
+ */
+export async function fetchImageModels(providerId) {
+    const cached = readModelListCache(providerId, 'image');
+    if (cached) return cached;
+
+    const prov = getProvider(providerId);
+    let models;
+
+    try {
+        if (providerId === 'nanogpt') {
+            const [subscriptionSet, rawResp] = await Promise.all([
+                fetchNanoSubscriptionIds(),
+                fetch(`${prov.imageModelsUrl}?detailed=true`, { headers: prov.headers(state.apiKey) })
+            ]);
+            if (!rawResp.ok) throw new Error(`image-models ${rawResp.status}`);
+            const data = await rawResp.json();
+            const list = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+            models = list.filter(m => m?.id).map(m => normalizeNanoImageModel(m, subscriptionSet));
+
+            // Guarantee all allowlist models appear even if absent from the live list
+            const liveIds = new Set(models.map(m => m.id));
+            for (const a of SUBSCRIPTION_IMAGE_ALLOWLIST) {
+                if (!liveIds.has(a.id)) {
+                    models.push({
+                        id: a.id, name: a.name, kind: 'image', provider: 'nanogpt',
+                        price: null, supportsImageInput: a.supportsImageInput,
+                        maxReferences: a.maxReferences, subscription: true
+                    });
+                }
+            }
+        } else {
+            const resp = await fetch(prov.modelsUrl);
+            if (!resp.ok) throw new Error(`models ${resp.status}`);
+            const data = await resp.json();
+            const list = Array.isArray(data.data) ? data.data : [];
+            models = list
+                .filter(m => m?.id && m.architecture?.modality?.includes('->image'))
+                .map(normalizeOpenRouterModel);
+        }
+
+        // Merge live-only models into MODEL_CONFIGS so existing lookups (cost, readiness, info card) work
+        for (const m of models) {
+            if (!MODEL_CONFIGS[m.id]) {
+                MODEL_CONFIGS[m.id] = {
+                    name: m.name, provider: m.provider, subscription: m.subscription,
+                    supportsImageInput: m.supportsImageInput, maxReferences: m.maxReferences,
+                    supportsImageSize: false, supportsAspectRatio: true
+                };
+            }
+        }
+
+        writeModelListCache(providerId, 'image', models);
+        return models;
+    } catch (e) {
+        console.warn(`Failed to fetch image models for ${providerId}:`, e);
+        if (providerId === 'nanogpt') {
+            return SUBSCRIPTION_IMAGE_ALLOWLIST.map(a => ({
+                id: a.id, name: a.name, kind: 'image', provider: 'nanogpt',
+                price: null, supportsImageInput: a.supportsImageInput,
+                maxReferences: a.maxReferences, subscription: true
+            }));
+        }
+        return Object.entries(MODEL_CONFIGS)
+            .filter(([, cfg]) => !cfg.provider || cfg.provider === 'openrouter')
+            .map(([id, cfg]) => ({
+                id, name: cfg.name || id, kind: 'image', provider: 'openrouter',
+                price: cfg.approxImageCost ? { perImage: cfg.approxImageCost } : null,
+                supportsImageInput: cfg.supportsImageInput || false,
+                maxReferences: cfg.maxReferences || 0, subscription: false
+            }));
     }
 }
 

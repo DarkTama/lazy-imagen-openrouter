@@ -139,10 +139,19 @@
                 </div>
             </div>
 
+            <!-- Provider -->
+            <div class="config-section">
+                <h3>Provider</h3>
+                <div class="button-group provider-toggle" id="providerToggle">
+                    <button type="button" class="btn-toggle active" data-provider="openrouter">OpenRouter</button>
+                    <button type="button" class="btn-toggle" data-provider="nanogpt">NanoGPT</button>
+                </div>
+            </div>
+
             <!-- API Key -->
             <div class="config-section">
-                <h3>OpenRouter API Key</h3>
-                <p class="api-key-note">Your key is stored locally in this browser and never sent to any server other than OpenRouter.</p>
+                <h3 id="apiKeyLabel">OpenRouter API Key</h3>
+                <p class="api-key-note" id="apiKeyNote">Your key is stored locally in this browser and never sent to any server other than OpenRouter.</p>
                 <input type="password" id="apiKey" placeholder="sk-or-..." class="text-input">
                 <button type="button" class="btn btn-ghost" id="saveApiKey">Save Key</button>
                 <label class="toggle-switch-label api-key-toggle-row">

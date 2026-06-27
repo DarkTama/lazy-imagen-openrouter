@@ -4,6 +4,46 @@
 
 import ImagenDB from './db.js';
 import { showToast } from './utils.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST } from './providers.js';
+
+// ===== Per-provider storage helpers =====
+// Exported so app.js can call them when switching providers.
+
+export function loadApiKeyForProvider(providerId) {
+    const lsKey = `imagen_api_key_${providerId}`;
+    const ssKey = `imagen_api_key_session_${providerId}`;
+    return localStorage.getItem(lsKey) || sessionStorage.getItem(ssKey) || '';
+}
+
+export function loadRememberKeyForProvider(providerId) {
+    return localStorage.getItem(`imagen_remember_key_${providerId}`) === 'true';
+}
+
+export function loadSelectedModelForProvider(providerId) {
+    const stored = localStorage.getItem(`imagen_model_${providerId}`);
+    if (stored) return stored;
+    return providerId === 'nanogpt' ? 'step-image-edit-2' : 'google/gemini-2.5-flash-image';
+}
+
+// One-time migration: flat legacy keys → per-provider namespaced keys.
+// Runs once on first load after the update; subsequent loads are no-ops.
+function migrateStorageKeys() {
+    const legacyKey = localStorage.getItem('imagen_api_key');
+    if (legacyKey && !localStorage.getItem('imagen_api_key_openrouter')) {
+        localStorage.setItem('imagen_api_key_openrouter', legacyKey);
+    }
+    const legacyModel = localStorage.getItem('imagen_model');
+    if (legacyModel && !localStorage.getItem('imagen_model_openrouter')) {
+        localStorage.setItem('imagen_model_openrouter', legacyModel);
+    }
+    const legacyRemember = localStorage.getItem('imagen_remember_key');
+    if (legacyRemember !== null && !localStorage.getItem('imagen_remember_key_openrouter')) {
+        localStorage.setItem('imagen_remember_key_openrouter', legacyRemember);
+    }
+}
+migrateStorageKeys();
+
+const _activeProvider = localStorage.getItem('imagen_provider') || 'openrouter';
 
 // ===== Orchestrator Defaults =====
 export const ORCHESTRATOR_DEFAULTS = {
@@ -74,7 +114,8 @@ export const MODEL_CONFIGS = {
         notes: 'Strong all-rounder. Supports image-to-image with up to 3 references.',
         // OpenRouter's /models pricing has no per-generated-image price (output
         // images bill as tokens), so this is the provider's list price per image.
-        approxImageCost: 0.039
+        approxImageCost: 0.039,
+        provider: 'openrouter'
     },
     'google/gemini-3.1-flash-image-preview': {
         name: 'Gemini 3.1 Flash Image (Preview)',
@@ -84,7 +125,8 @@ export const MODEL_CONFIGS = {
         maxReferences: 3,
         bestFor: 'Newer Flash generation \u2014 improved detail and consistency',
         speed: 'fast',
-        notes: 'Preview model; behavior may change between releases.'
+        notes: 'Preview model; behavior may change between releases.',
+        provider: 'openrouter'
     },
     'google/gemini-3-pro-image-preview': {
         name: 'Gemini 3 Pro Image (Preview)',
@@ -95,7 +137,8 @@ export const MODEL_CONFIGS = {
         bestFor: 'Best for complex compositions with many references',
         speed: 'med',
         notes: 'Supports up to 14 reference images \u2014 ideal for character sheets, mood boards.',
-        approxImageCost: 0.134
+        approxImageCost: 0.134,
+        provider: 'openrouter'
     },
     'openai/gpt-5-image': {
         name: 'GPT-5 Image',
@@ -105,7 +148,8 @@ export const MODEL_CONFIGS = {
         maxReferences: 1,
         bestFor: 'Best for prompt adherence and text rendering',
         speed: 'med',
-        notes: 'OpenAI image model. Strong at following detailed instructions.'
+        notes: 'OpenAI image model. Strong at following detailed instructions.',
+        provider: 'openrouter'
     },
     'openai/gpt-5-image-mini': {
         name: 'GPT-5 Image Mini',
@@ -115,7 +159,8 @@ export const MODEL_CONFIGS = {
         maxReferences: 1,
         bestFor: 'Cheaper OpenAI option for quick iterations',
         speed: 'fast',
-        notes: 'Smaller variant of GPT-5 Image \u2014 lower cost, slightly reduced quality.'
+        notes: 'Smaller variant of GPT-5 Image \u2014 lower cost, slightly reduced quality.',
+        provider: 'openrouter'
     },
     'openai/gpt-5.4-image-2': {
         name: 'GPT-5.4 Image 2',
@@ -125,7 +170,8 @@ export const MODEL_CONFIGS = {
         maxReferences: 1,
         bestFor: 'Newer OpenAI image model \u2014 try if Gemini refuses',
         speed: 'med',
-        notes: "OpenAI's latest image model. Different content policy thresholds than Gemini."
+        notes: "OpenAI's latest image model. Different content policy thresholds than Gemini.",
+        provider: 'openrouter'
     },
     'openrouter/auto': {
         name: 'Auto (OpenRouter chooses)',
@@ -135,9 +181,14 @@ export const MODEL_CONFIGS = {
         maxReferences: 3,
         bestFor: "Lets OpenRouter pick \u2014 useful if you don't care which provider",
         speed: 'med',
-        notes: 'Auto-routes across available image-gen models. Behavior depends on routing.'
+        notes: 'Auto-routes across available image-gen models. Behavior depends on routing.',
+        provider: 'openrouter'
     }
 };
+
+// Merge NanoGPT subscription models into MODEL_CONFIGS so every lookup
+// (orchestrator readiness, cost estimate, info card) works without branching.
+SUBSCRIPTION_IMAGE_ALLOWLIST.forEach(m => { MODEL_CONFIGS[m.id] = m; });
 
 // ===== Vision-capable models for the analyst step =====
 export const VISION_MODELS = [
@@ -220,6 +271,10 @@ export const LARGE_IMAGE_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2 MB
 export const MODEL_PRICING_CACHE_KEY = 'imagen_model_pricing';
 export const MODEL_PRICING_TTL_MS = 24 * 60 * 60 * 1000;
 
+// ===== Model List Cache =====
+export const MODEL_LIST_CACHE_KEY_PREFIX = 'imagen_model_list_';
+export const MODEL_LIST_TTL_MS = 24 * 60 * 60 * 1000;
+
 // ===== Load orchestrator state from localStorage =====
 export function loadOrchestratorState() {
     try {
@@ -239,9 +294,10 @@ export function loadOrchestratorState() {
 
 // ===== Application State =====
 export const state = {
-    apiKey: localStorage.getItem('imagen_api_key') || sessionStorage.getItem('imagen_api_key') || '',
-    rememberKey: localStorage.getItem('imagen_remember_key') === 'true',
-    selectedModel: localStorage.getItem('imagen_model') || 'google/gemini-2.5-flash-image',
+    provider: _activeProvider,
+    apiKey: loadApiKeyForProvider(_activeProvider),
+    rememberKey: loadRememberKeyForProvider(_activeProvider),
+    selectedModel: loadSelectedModelForProvider(_activeProvider),
     imageSize: localStorage.getItem('imagen_size') || '1024x1024',
     imageQuality: localStorage.getItem('imagen_quality') || '1K',
     aspectRatio: localStorage.getItem('imagen_aspect_ratio') || '1:1',
@@ -253,6 +309,7 @@ export const state = {
     currentImage: null,
     pendingBatches: [],
     modelPricing: {},
+    fetchedModels: { openrouter: { image: [], vision: [] }, nanogpt: { image: [], vision: [] } },
     galleryPageSize: 20,
     galleryDisplayedCount: 20,
     galleryFilter: { text: '', model: '', favoritesOnly: false },

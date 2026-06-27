@@ -5,12 +5,14 @@
 
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
-import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS } from './state.js';
-import { ApiError, generateSingleImage, fetchModelPricing, runWithConcurrency } from './api.js';
+import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider } from './state.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
+import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, runWithConcurrency } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
 import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal } from './ui.js';
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
-import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, enhanceGenerationModelDropdown, renderOrchestratorReadiness, setRoleImageFromUrl } from './orchestrator.js';
+import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl } from './orchestrator.js';
+import { createModelPicker } from './model-picker.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { initHistory } from './history.js';
 import { initAccessibility } from './accessibility.js';
@@ -18,6 +20,158 @@ import { exportGallery, importGallery } from './export-import.js';
 import { initNotifications } from './notifications.js';
 import { initImageTools, openImageTools, closeImageTools, isImageToolsOpen } from './image-tools.js';
 import { initHelp } from './help.js';
+
+let _generationPicker = null;
+
+/**
+ * Keep the generation picker's img2img filter in sync with the orchestrator +
+ * provider state: when NanoGPT + orchestrator are both active, only img2img
+ * models are shown. Auto-switches away from a txt2img model if needed.
+ */
+function syncGenerationPickerConstraints() {
+    if (!_generationPicker) return;
+    const needsImg2img = state.orchestrator.enabled && state.provider === 'nanogpt';
+    _generationPicker.setFilter('img2img', needsImg2img);
+    if (needsImg2img) {
+        const cfg = MODEL_CONFIGS[state.selectedModel];
+        if (!cfg?.supportsImageInput) {
+            const liveModels = state.fetchedModels?.[state.provider]?.image || [];
+            const pool = liveModels.length ? liveModels : SUBSCRIPTION_IMAGE_ALLOWLIST;
+            const first = pool.find(m => m.supportsImageInput);
+            if (first) {
+                state.selectedModel = first.id;
+                localStorage.setItem(`imagen_model_${state.provider}`, first.id);
+                if (elements.modelSelectValue) elements.modelSelectValue.textContent = first.name || first.id;
+                _generationPicker.syncSelected();
+                renderModelInfoCard(first.id, elements.generationModelInfo, MODEL_CONFIGS[first.id]);
+                renderCostEstimate();
+                renderOrchestratorReadiness();
+            }
+        }
+    }
+}
+
+// ===== Provider helpers =====
+
+/** Storage key names for a given provider. */
+function providerKeyNames(providerId) {
+    return {
+        lsKey: `imagen_api_key_${providerId}`,
+        ssKey: `imagen_api_key_session_${providerId}`,
+        rememberKey: `imagen_remember_key_${providerId}`
+    };
+}
+
+/**
+ * Update sidebar UI to reflect the active provider:
+ * active button highlight, key label, note text, input placeholder.
+ */
+function applyProviderUI(providerId) {
+    document.querySelectorAll('#providerToggle .btn-toggle').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.provider === providerId);
+    });
+    const prov = getProvider(providerId);
+    if (elements.apiKeyLabel) elements.apiKeyLabel.textContent = prov.keyLabel;
+    if (elements.apiKeyNote)  elements.apiKeyNote.textContent  = prov.keyNote;
+    if (elements.apiKey)      elements.apiKey.placeholder      = prov.keyPlaceholder;
+}
+
+/**
+ * Build or refresh the generation model picker for the given provider.
+ * First call creates the searchable picker; subsequent calls update its model list.
+ */
+function rebuildGenerationModelOptions(providerId) {
+    const container = elements.modelSelectOptions;
+    if (!container) return;
+
+    const liveModels = state.fetchedModels?.[providerId]?.image || [];
+    const models = liveModels.length > 0
+        ? liveModels
+        : (providerId === 'nanogpt'
+            ? SUBSCRIPTION_IMAGE_ALLOWLIST
+            : Object.entries(MODEL_CONFIGS)
+                .filter(([, cfg]) => !cfg.provider || cfg.provider === 'openrouter')
+                .map(([id, cfg]) => ({ id, ...cfg })));
+
+    if (!_generationPicker) {
+        _generationPicker = createModelPicker({
+            container,
+            trigger: elements.modelSelectTrigger,
+            valueDisplay: elements.modelSelectValue,
+            getModels: () => models,
+            getSelected: () => state.selectedModel,
+            onSelect(id) {
+                state.selectedModel = id;
+                localStorage.setItem(`imagen_model_${state.provider}`, id);
+                updateGeminiOptionsVisibility();
+                renderModelInfoCard(id, elements.generationModelInfo, MODEL_CONFIGS[id]);
+                renderCostEstimate();
+                renderOrchestratorReadiness();
+                if (isMobileLayout()) closeSidebar();
+            },
+            kind: 'image',
+            onRefresh: () => fetchImageModels(state.provider),
+            searchPlaceholder: 'Search image models…',
+        });
+    } else {
+        _generationPicker.refresh(models);
+    }
+
+    // Ensure the trigger display text matches the current selection
+    const selectedInList = models.find(m => m.id === state.selectedModel);
+    if (selectedInList) {
+        if (elements.modelSelectValue) elements.modelSelectValue.textContent = selectedInList.name || selectedInList.id;
+    } else if (models.length) {
+        // Fall back to first model if saved selection not in list
+        state.selectedModel = models[0].id;
+        localStorage.setItem(`imagen_model_${providerId}`, state.selectedModel);
+        if (elements.modelSelectValue) elements.modelSelectValue.textContent = models[0].name || models[0].id;
+        _generationPicker.syncSelected();
+    }
+}
+
+/**
+ * Switch the active provider: persist the change, reload the key/model,
+ * rebuild the picker, and update all UI that depends on the provider.
+ */
+function switchProvider(newProviderId) {
+    if (newProviderId === state.provider) return;
+
+    // Save current model under the old provider before switching
+    localStorage.setItem(`imagen_model_${state.provider}`, state.selectedModel);
+
+    state.provider = newProviderId;
+    localStorage.setItem('imagen_provider', newProviderId);
+
+    state.apiKey      = loadApiKeyForProvider(newProviderId);
+    state.rememberKey = loadRememberKeyForProvider(newProviderId);
+    state.selectedModel = loadSelectedModelForProvider(newProviderId);
+
+    elements.apiKey.value = state.apiKey;
+    elements.rememberKeyToggle.checked = state.rememberKey;
+
+    applyProviderUI(newProviderId);
+    rebuildGenerationModelOptions(newProviderId);
+    updateGeminiOptionsVisibility();
+    renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+    renderCostEstimate();
+    renderOrchestratorReadiness();
+
+    showToast(`Switched to ${getProvider(newProviderId).label}`, 'success');
+
+    syncGenerationPickerConstraints();
+
+    // If we haven't fetched live models for this provider yet, do it now
+    if (!state.fetchedModels[newProviderId].image.length) {
+        fetchImageModels(newProviderId).then(models => {
+            state.fetchedModels[newProviderId].image = models;
+            rebuildGenerationModelOptions(newProviderId);
+            syncGenerationPickerConstraints();
+            renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+            renderCostEstimate();
+        });
+    }
+}
 
 // ===== Initialization =====
 async function init() {
@@ -28,24 +182,16 @@ async function init() {
         elements.themeToggleBtn.addEventListener('click', toggleTheme);
     }
 
-    if (state.apiKey) {
-        elements.apiKey.value = state.apiKey;
-    }
+    // Init provider toggle active state + key field label/placeholder
+    applyProviderUI(state.provider);
 
+    elements.apiKey.value = state.apiKey;
     elements.rememberKeyToggle.checked = state.rememberKey;
 
     renderReferenceSlots();
 
-    enhanceGenerationModelDropdown();
-    if (state.selectedModel) {
-        const savedOption = document.querySelector('#modelSelectOptions .custom-select-option[data-value="' + state.selectedModel + '"]');
-        if (savedOption) {
-            document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
-            savedOption.classList.add('selected');
-            const cfg = MODEL_CONFIGS[state.selectedModel];
-            elements.modelSelectValue.textContent = cfg?.name || savedOption.dataset.value;
-        }
-    }
+    // Rebuild model picker for the active provider (populates options, attaches listeners, enhances)
+    rebuildGenerationModelOptions(state.provider);
 
     document.querySelectorAll('.btn-toggle').forEach(btn => {
         btn.classList.remove('active');
@@ -114,6 +260,13 @@ async function init() {
         renderVisionModelChip();
         renderCostEstimate();
     });
+
+    fetchImageModels(state.provider).then(models => {
+        state.fetchedModels[state.provider].image = models;
+        rebuildGenerationModelOptions(state.provider);
+        renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+        renderCostEstimate();
+    });
 }
 
 // ===== Event Listeners =====
@@ -145,22 +298,9 @@ function setupEventListeners() {
         elements.modelSelectTrigger.setAttribute('aria-expanded', String(isOpen));
     });
 
-    document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(option => {
-        option.addEventListener('click', () => {
-            state.selectedModel = option.dataset.value;
-            localStorage.setItem('imagen_model', state.selectedModel);
-            const cfg = MODEL_CONFIGS[state.selectedModel];
-            elements.modelSelectValue.textContent = cfg?.name || option.dataset.value;
-            document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-            elements.modelSelectContainer.classList.remove('open');
-            elements.modelSelectTrigger.setAttribute('aria-expanded', 'false');
-            updateGeminiOptionsVisibility();
-            renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
-            renderCostEstimate();
-            renderOrchestratorReadiness();
-            if (isMobileLayout()) closeSidebar();
-        });
+    // Provider toggle
+    document.querySelectorAll('#providerToggle .btn-toggle').forEach(btn => {
+        btn.addEventListener('click', () => switchProvider(btn.dataset.provider));
     });
 
     document.addEventListener('click', (e) => {
@@ -225,13 +365,14 @@ function setupEventListeners() {
     }
 
     elements.saveApiKey.addEventListener('click', () => {
+        const { lsKey, ssKey } = providerKeyNames(state.provider);
         state.apiKey = elements.apiKey.value.trim();
         if (state.rememberKey) {
-            localStorage.setItem('imagen_api_key', state.apiKey);
-            sessionStorage.removeItem('imagen_api_key');
+            localStorage.setItem(lsKey, state.apiKey);
+            sessionStorage.removeItem(ssKey);
         } else {
-            sessionStorage.setItem('imagen_api_key', state.apiKey);
-            localStorage.removeItem('imagen_api_key');
+            sessionStorage.setItem(ssKey, state.apiKey);
+            localStorage.removeItem(lsKey);
         }
         showToast('API key saved!', 'success');
         renderOrchestratorReadiness();
@@ -239,23 +380,25 @@ function setupEventListeners() {
     });
 
     elements.rememberKeyToggle.addEventListener('change', () => {
+        const { lsKey, ssKey, rememberKey } = providerKeyNames(state.provider);
         state.rememberKey = elements.rememberKeyToggle.checked;
-        localStorage.setItem('imagen_remember_key', state.rememberKey ? 'true' : 'false');
+        localStorage.setItem(rememberKey, state.rememberKey ? 'true' : 'false');
         if (state.apiKey) {
             if (state.rememberKey) {
-                localStorage.setItem('imagen_api_key', state.apiKey);
-                sessionStorage.removeItem('imagen_api_key');
+                localStorage.setItem(lsKey, state.apiKey);
+                sessionStorage.removeItem(ssKey);
             } else {
-                sessionStorage.setItem('imagen_api_key', state.apiKey);
-                localStorage.removeItem('imagen_api_key');
+                sessionStorage.setItem(ssKey, state.apiKey);
+                localStorage.removeItem(lsKey);
             }
         }
     });
 
     elements.clearApiKey.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear your API key?')) {
-            localStorage.removeItem('imagen_api_key');
-            sessionStorage.removeItem('imagen_api_key');
+            const { lsKey, ssKey } = providerKeyNames(state.provider);
+            localStorage.removeItem(lsKey);
+            sessionStorage.removeItem(ssKey);
             state.apiKey = '';
             elements.apiKey.value = '';
             showToast('API key cleared', 'success');
@@ -376,6 +519,8 @@ function setupEventListeners() {
     document.addEventListener('paste', handlePaste);
 
     setupOrchestratorEventListeners(generateImages);
+
+    document.addEventListener('imagen:orchestrator-mode', () => syncGenerationPickerConstraints());
 
     window.addEventListener('beforeunload', (e) => {
         if (state.pendingBatches.length > 0) {
@@ -706,7 +851,7 @@ function clearAllReferences() {
 // ===== Image Generation =====
 async function generateImages() {
     if (!state.apiKey) {
-        showToast('Please enter your OpenRouter API key', 'error');
+        showToast(`Please enter your ${getProvider(state.provider).label} API key`, 'error');
         return;
     }
 
@@ -721,7 +866,7 @@ async function generateImages() {
         }
         const modelConfig = MODEL_CONFIGS[state.selectedModel];
         if (!modelConfig?.supportsImageInput) {
-            showToast((modelConfig?.name || state.selectedModel) + " doesn't support image input. Pick a Gemini or GPT-5 Image model for Orchestrator Mode.", 'error');
+            showToast((modelConfig?.name || state.selectedModel) + " doesn't support image input — pick a model that supports img2img for Orchestrator Mode.", 'error');
             return;
         }
 

@@ -1,6 +1,6 @@
 # lazy-imagen-openrouter
 
-> The lazy developer's UI for OpenRouter. Upload two images, click a few checkboxes, and let the tool write the complex image-to-image prompts for you. It chains a vision model to automatically extract metadata from a Source and Reference image, allowing users to effortlessly transfer poses, clothing, and styles — all without typing a prose prompt.
+> A local-first image generation UI supporting **OpenRouter** and **NanoGPT**. Upload two images, click a few checkboxes, and let the tool write the complex image-to-image prompts for you. It chains a vision model to automatically extract metadata from a Source and Reference image, allowing users to effortlessly transfer poses, clothing, and styles — all without typing a prose prompt.
 
 ## 📖 Origin & Credits
 
@@ -28,10 +28,17 @@ As per the original project, this modified software remains open-source and is l
 - **Editable prompt preview** — char count, copy button, and a "settings changed — re-assemble" badge so a stale prompt never surprises you.
 - **Mobile-friendly workspace** — side-by-side slots, compact toggle grid, sticky Generate footer at phone sizes.
 
-### 📊 Model Info Cards
-Every model dropdown shows pricing (live, from `/api/v1/models`), best-for descriptors, speed indicator, context window, and capability summary.
+### 🔌 Dual-Provider Support (OpenRouter + NanoGPT)
+- **Quick-switch** between OpenRouter and NanoGPT with a toggle at the top of the sidebar; both API keys are saved independently.
+- **OpenRouter**: full catalogue of generation, vision, and research models; live pricing fetched from the API.
+- **NanoGPT**: 5 subscription-included image models (no per-image charge) — `Step Image Edit 2`, `Z Image Turbo`, `Qwen Image`, `HiDream`, `Chroma`. Generation calls go to NanoGPT's images endpoint; vision, research, and AI-assist still route through OpenRouter.
+- **Live model list**: the model picker fetches the current model list from the active provider on startup (cached 24 h) with a ↻ refresh button.
+- **Searchable model picker**: ilike search over model ID and name, sort by name / price / subscription-first, filter to subscription-only or img2img-capable models.
 
-### 🎨 Multi-Model Support
+### 📊 Model Info Cards
+Every model dropdown shows pricing (live, from the provider API), best-for descriptors, speed indicator, context window, and capability summary. Subscription-included NanoGPT models show "Included with NanoGPT subscription" instead of a price.
+
+### 🎨 Multi-Model Support (OpenRouter)
 - **Gemini 2.5 Flash Image** — Google's fast image generation
 - **Gemini 2.5 Flash (Preview)** — Preview version with latest features
 - **Gemini 3.1 Flash (Preview)** — Newer Gemini preview image model
@@ -41,6 +48,14 @@ Every model dropdown shows pricing (live, from `/api/v1/models`), best-for descr
 - **Flux 2 Pro / Max / Flex / Klein** — Black Forest Labs models
 - **Seedream 4.5** — ByteDance's image model
 - **Riverflow V2** — Fast/Standard/Max variants
+
+### 🎨 NanoGPT Subscription Models
+All five are included in a NanoGPT subscription at no extra cost per image:
+- **Step Image Edit 2** — img2img + txt2img
+- **Z Image Turbo** — fast txt2img
+- **Qwen Image** — img2img + txt2img
+- **HiDream** — high-quality txt2img
+- **Chroma** — stylized txt2img
 
 ### 📐 Flexible Output Options
 - **Resolution**: 1K, 2K, 4K (Gemini models)
@@ -102,39 +117,51 @@ Every model dropdown shows pricing (live, from `/api/v1/models`), best-for descr
    npm run dev
    ```
 3. Open the URL Vite prints (default http://localhost:5173).
-4. Paste your OpenRouter API key into the **OpenRouter API Key** field in the sidebar, then click **Save Key**. The key is stored only in your browser's `localStorage` — it never leaves your machine except in API requests to OpenRouter.
-5. Pick a **Model** from the dropdown. The info card below shows what each model is best for, its speed, and (once pricing loads) its cost per million tokens / per image.
-6. Type a prompt in the main textarea and click **Generate**.
+4. Choose a provider with the **Provider** toggle at the top of the sidebar:
+   - **OpenRouter** — paste your key from [openrouter.ai](https://openrouter.ai) and click **Save Key**.
+   - **NanoGPT** — paste your key from [nano-gpt.com](https://nano-gpt.com) and click **Save Key**. Subscription models appear immediately; no credits needed for image generation.
+5. Pick a **Model** from the dropdown. The searchable picker shows pricing, subscription badges, and img2img support at a glance.
+6. Type a prompt and click **Generate** (or press `Ctrl/Cmd + Enter`).
 
 That's the manual flow. The rest of the guide covers **Orchestrator Mode**.
 
-## 🔑 Getting an OpenRouter API Key
+## 🔑 Getting an API Key
+
+### OpenRouter
 
 1. Go to [OpenRouter](https://openrouter.ai/).
-2. Create an account.
-3. Navigate to **Keys** section.
-4. Create a new API key.
-5. Copy and paste it into the tool.
+2. Create an account and add credits.
+3. Navigate to **Keys** and create a new API key.
+4. Select **OpenRouter** in the Provider toggle, paste the key, and click **Save Key**.
+
+### NanoGPT
+
+1. Go to [NanoGPT](https://nano-gpt.com/).
+2. Create an account and subscribe (or add credits).
+3. Copy your API key from account settings.
+4. Select **NanoGPT** in the Provider toggle, paste the key, and click **Save Key**.
+
+Both keys are saved independently in your browser — switching providers reloads the appropriate key automatically.
 
 ### A note on free models
 
-Orchestrator Mode makes up to three OpenRouter calls per generation:
+Orchestrator Mode makes up to three API calls per generation:
 
-| Call | Free options available? |
-| --- | --- |
-| **Vision analyst** (extracts metadata from Source + Reference) | ✅ Yes — Vision Analyst dropdown entries with **(free)** in the name use OpenRouter's free tier ($0 per call, rate-limited). |
-| **Subject research** (Perplexity Sonar) | ❌ Paid only. |
-| **Image generation** | ❌ Paid only — no free image-generation models on OpenRouter as of this writing. |
+| Call | Provider | Free options? |
+| --- | --- | --- |
+| **Vision analyst** (reads Source + Reference) | OpenRouter | ✅ Free-tier entries available (rate-limited) |
+| **Subject research** (Perplexity Sonar) | OpenRouter | ❌ Paid only |
+| **Image generation** | OpenRouter or NanoGPT | NanoGPT subscription = $0/image for the 5 bundled models |
 
-Manual prompt mode skips the vision call entirely and only uses the (paid) image-generation model.
+Manual prompt mode skips the vision call — only the image generation is charged.
 
 ### A note on content restrictions
 
-Every image-generation model currently available on OpenRouter is from Google (Gemini Image / "Nano Banana") or OpenAI (GPT-5, GPT-5.4 Image). Both have moderate-to-strict content policies. **Anime-permissive providers (Flux, Stable Diffusion, NovelAI, Pony) are not on OpenRouter as of this writing.**
+OpenRouter image models (Gemini Image, GPT-5 Image) have moderate-to-strict content policies.
 
-If the **vision step** (Assemble Prompt) refuses your images — symptom is an "undefined" prompt or a "Vision response was not valid JSON" error — switch the Vision Analyst Model in the **Advanced** drawer to **Qwen2.5-VL 72B** or **Llama 3.2 90B Vision**. Both are open-weight and significantly more permissive at describing character/anime content.
+If the **vision step** refuses — "undefined" prompt or "Vision response was not valid JSON" — switch the Vision Analyst Model to **Qwen2.5-VL 72B** or **Llama 3.2 90B Vision**.
 
-If the **image generation step** refuses, try **GPT-5.4 Image 2** (different content-policy thresholds than Gemini) or simplify the assembled prompt before clicking Generate.
+If the **image generation step** refuses on OpenRouter, try a different model or simplify the prompt. NanoGPT's models (Step Edit 2, Qwen Image, etc.) may have different thresholds.
 
 ## 🧩 Orchestrator Mode — User Guide
 
@@ -274,7 +301,7 @@ For a custom model ID typed into the override field, the card shows "Info unavai
 - The chosen model is rate-limited.
 The orchestrator falls back to whatever's in the textarea, so a previous assembled prompt may still generate something usable.
 
-**"Doesn't support image input"** — Orchestrator Mode requires a generation model that accepts reference images. Switch to a Gemini, GPT-5 Image, or other vision-capable model. Flux, Seedream, and Riverflow are text-to-image only.
+**"Doesn't support image input"** — Orchestrator Mode requires a generation model that accepts reference images. On OpenRouter, switch to Gemini or GPT-5 Image. On NanoGPT, only **Step Image Edit 2** and **Qwen Image** support img2img — the picker automatically filters to these when Orchestrator mode is enabled.
 
 **"Could not save orchestrator state — uploaded images may be too large"** — orchestrator settings live in `localStorage` (~5MB quota) while the Source/Reference images themselves persist in IndexedDB. If this appears, the settings snapshot failed but the current session still works fine; the images usually survive a refresh regardless.
 
@@ -305,7 +332,7 @@ Opening from the gallery loads the image into **both** tools; uploads inside the
 
 1. Opening the tab runs **Auto-detect** immediately: it samples the image borders and flood-fills everything that looks like background, stopping at anti-aliased subject edges. Raise or lower **Tolerance** and re-run to tune it. A result that would wipe almost the whole image automatically retries at half tolerance (the slider follows), and reverts with a warning if that fails too.
 2. Fix the rest by hand: the **Remove** brush erases, **Keep** restores. Tick **Smart select (magic wand)** and a single click removes or restores the *whole connected color region* — ideal for clearing big background patches or rescuing an over-removed area in one click.
-3. For stubborn, busy backgrounds, **✨ AI assist** sends the image to Gemini via OpenRouter to repaint the background a solid key color, which is then removed locally. **This costs ≈ $0.04 per attempt** — a confirmation with the estimate appears before anything is charged, and the AI's version of the image replaces your working copy.
+3. For stubborn, busy backgrounds, **✨ AI assist** sends the image to Gemini via **OpenRouter** to repaint the background a solid key color, which is then removed locally. **This costs ≈ $0.04 per attempt** — a confirmation with the estimate appears before anything is charged. Requires an OpenRouter key (not available when NanoGPT is the active provider).
 4. **Edge feather** softens the cutout boundary. `Ctrl+Z`/`Ctrl+Y` undo/redo whole strokes; `[` `]` resize the brush.
 5. **Download PNG** (with transparency) or **Save to Gallery**.
 
@@ -324,7 +351,7 @@ This is a **100% client-side application**:
 
 - ✅ API keys are stored in YOUR browser only
 - ✅ Generated images are stored in YOUR browser only (IndexedDB)
-- ✅ No data is sent to any server except OpenRouter API
+- ✅ No data is sent to any server except the active provider API (OpenRouter or NanoGPT)
 - ✅ Safe to deploy as a static website
 
 ## ⌨️ Keyboard Shortcuts
@@ -343,7 +370,7 @@ This is a **100% client-side application**:
 
 - **Frontend**: ES-module vanilla HTML/CSS/JavaScript — single runtime dependency: [pica](https://github.com/nodeca/pica) for the client-side upscaler
 - **Build / Dev**: Vite (bundling, content-hashed assets) + vite-plugin-pwa (manifest + service worker) + Vitest (tests) + ESLint + Prettier — dev-only
-- **API**: OpenRouter for model access
+- **API**: OpenRouter and NanoGPT for model access (dual-provider, quick-switch)
 - **Storage**: IndexedDB for images/references + localStorage for settings and notification history
 - **Styling**: Custom CSS with CSS variables
 - **CI / Deploy**: GitHub Actions → GitHub Pages
@@ -399,8 +426,10 @@ All source code lives in `src/` as ES modules. The only runtime dependency is `p
 | Module | Responsibility |
 |--------|---------------|
 | `app.js` | Entry point, module initialization, event wiring |
-| `orchestrator.js` | Orchestrator mode: prompt assembly, error classification |
-| `api.js` | OpenRouter API fetch wrappers |
+| `providers.js` | Provider registry (OpenRouter + NanoGPT): URLs, headers, image strategy |
+| `orchestrator.js` | Orchestrator mode: prompt assembly, vision analysis, readiness chips |
+| `api.js` | Provider-aware API fetch wrappers (chat-completions + images-endpoint) |
+| `model-picker.js` | Searchable model picker component (ilike, sort, filter chips, badges) |
 | `retry.js` | Exponential backoff retry utility |
 | `utils.js` | Pure utilities (escapeHtml, debounce, sanitizeImageUrl, clipboard, etc.) |
 | `state.js` | Constants, model configs, shared state |

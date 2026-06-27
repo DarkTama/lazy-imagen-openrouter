@@ -3,11 +3,14 @@
  */
 
 import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES } from './state.js';
+import { createModelPicker } from './model-picker.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
 import { escapeHtml, sanitizeImageUrl, debounce, showToast, formatPrice, speedGlyph, readFileAsDataURI, compressDataUri, compressImageFile, approxKB, imageFingerprint } from './utils.js';
 import { ApiError, runVisionAnalysis, researchSubject } from './api.js';
 import { isMobileLayout, renderModelInfoCard } from './ui.js';
+
+let _visionPicker = null;
 
 export function setupOrchestrator() {
     const o = state.orchestrator;
@@ -15,22 +18,21 @@ export function setupOrchestrator() {
     renderToggleGrid();
     renderPresets();
 
-    elements.visionModelOptions.innerHTML = '';
-    VISION_MODELS.forEach(m => {
-        const opt = document.createElement('div');
-        opt.className = 'custom-select-option';
-        opt.dataset.value = m.id;
-        opt.setAttribute('role', 'option');
-        if (m.id === o.visionModel) opt.classList.add('selected');
-        const name = document.createElement('span');
-        name.className = 'option-name';
-        name.textContent = m.name;
-        opt.appendChild(name);
-        const sub = document.createElement('span');
-        sub.className = 'option-bestfor';
-        sub.textContent = m.bestFor;
-        opt.appendChild(sub);
-        elements.visionModelOptions.appendChild(opt);
+    _visionPicker = createModelPicker({
+        container: elements.visionModelOptions,
+        trigger: elements.visionModelTrigger,
+        valueDisplay: elements.visionModelValue,
+        getModels: () => VISION_MODELS,
+        getSelected: () => state.orchestrator.visionModel,
+        onSelect(id) {
+            state.orchestrator.visionModel = id;
+            renderVisionModelChip();
+            saveOrchestratorState();
+            markPromptStale();
+            updatePromptToolbar();
+        },
+        kind: 'vision',
+        searchPlaceholder: 'Search vision models…',
     });
     const currentVision = VISION_MODELS_BY_ID[o.visionModel] || VISION_MODELS[0];
     elements.visionModelValue.textContent = currentVision.name;
@@ -92,6 +94,7 @@ export function applyOrchestratorMode(enabled) {
     elements.promptInput.readOnly = o.enabled;
     placeTokenSaverTip(o.enabled);
     renderOrchestratorReadiness();
+    document.dispatchEvent(new CustomEvent('imagen:orchestrator-mode', { detail: { enabled: o.enabled } }));
 }
 
 /**
@@ -121,11 +124,16 @@ export function renderOrchestratorReadiness() {
     if (!strip) return;
     const o = state.orchestrator;
     const modelConfig = MODEL_CONFIGS[state.selectedModel];
+    const supportsImg = Boolean(modelConfig?.supportsImageInput);
+    const isNanoGPT = state.provider === 'nanogpt';
+    const imgCapableLabel = (isNanoGPT && !supportsImg)
+        ? 'img2img model (Step Edit 2 or Qwen Image)'
+        : 'Image-capable model';
     const items = [
         { label: 'Source', ok: Boolean(o.sourceImage) },
         { label: 'Reference', ok: Boolean(o.referenceImage) },
         { label: 'API key', ok: Boolean(state.apiKey) },
-        { label: 'Image-capable model', ok: Boolean(modelConfig?.supportsImageInput) }
+        { label: imgCapableLabel, ok: supportsImg }
     ];
     strip.innerHTML = items.map(item =>
         `<span class="ow-ready-chip ${item.ok ? 'ok' : 'missing'}">${item.ok ? '✓' : '✗'} ${escapeHtml(item.label)}</span>`
@@ -780,22 +788,6 @@ export function setupOrchestratorEventListeners(generateImages) {
         const isOpen = elements.visionModelContainer.classList.contains('open');
         elements.visionModelTrigger.setAttribute('aria-expanded', String(isOpen));
     });
-    elements.visionModelOptions.addEventListener('click', (e) => {
-        const opt = e.target.closest('.custom-select-option');
-        if (!opt) return;
-        const id = opt.dataset.value;
-        o.visionModel = id;
-        elements.visionModelOptions.querySelectorAll('.custom-select-option').forEach(o2 => o2.classList.remove('selected'));
-        opt.classList.add('selected');
-        const meta = VISION_MODELS_BY_ID[id];
-        elements.visionModelValue.textContent = meta?.name || id;
-        elements.visionModelContainer.classList.remove('open');
-        elements.visionModelTrigger.setAttribute('aria-expanded', 'false');
-        renderVisionModelChip();
-        saveOrchestratorState();
-        markPromptStale();
-        updatePromptToolbar(); // cache validity depends on the vision model
-    });
     document.addEventListener('click', (e) => {
         if (!elements.visionModelContainer.contains(e.target)) {
             elements.visionModelContainer.classList.remove('open');
@@ -1089,11 +1081,8 @@ export function restoreOrchestratorFromSnapshot(snap) {
 
     if (elements.visionModelCustom) elements.visionModelCustom.value = snap.visionModelCustom || '';
     const visionId = snap.visionModel || 'google/gemini-2.5-flash';
-    if (elements.visionModelOptions) {
-        elements.visionModelOptions.querySelectorAll('.custom-select-option').forEach(o => {
-            o.classList.toggle('selected', o.dataset.value === visionId);
-        });
-    }
+    state.orchestrator.visionModel = visionId;
+    _visionPicker?.syncSelected();
     if (elements.visionModelValue) {
         elements.visionModelValue.textContent = (VISION_MODELS_BY_ID[visionId] || {}).name || visionId;
     }
@@ -1299,26 +1288,3 @@ export async function hydrateOrchestratorImages() {
     await hydrateRoleRecents();
 }
 
-export function enhanceGenerationModelDropdown() {
-    const container = elements.modelSelectContainer;
-    if (!container) return;
-    container.classList.add('rich');
-
-    container.querySelectorAll('.custom-select-option').forEach(opt => {
-        const id = opt.dataset.value;
-        const cfg = MODEL_CONFIGS[id];
-        if (!cfg || opt.querySelector('.option-bestfor')) return;
-        const labelText = (cfg.name || opt.textContent).trim();
-        opt.textContent = '';
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'option-name';
-        nameSpan.textContent = labelText;
-        opt.appendChild(nameSpan);
-        if (cfg.bestFor) {
-            const sub = document.createElement('span');
-            sub.className = 'option-bestfor';
-            sub.textContent = cfg.bestFor;
-            opt.appendChild(sub);
-        }
-    });
-}

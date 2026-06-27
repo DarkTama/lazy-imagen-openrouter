@@ -514,6 +514,10 @@ async function initBgWorkspace() {
 async function runAiAssist() {
     const bg = tools.bg;
     if (!bg.initialized || tools.processing) return;
+    if (state.provider !== 'openrouter') {
+        showToast('AI assist uses an OpenRouter model — switch to OpenRouter in the sidebar', 'error');
+        return;
+    }
     if (!state.apiKey) {
         showToast('Save your OpenRouter API key first', 'error');
         return;

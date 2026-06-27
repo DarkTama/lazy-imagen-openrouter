@@ -19,7 +19,9 @@ export function renderModelInfoCard(modelId, target, meta) {
 
     const pricing = state.modelPricing[modelId];
     const priceLines = [];
-    if (pricing) {
+    if (meta.subscription) {
+        priceLines.push('Included with NanoGPT subscription');
+    } else if (pricing) {
         const prompt = formatPrice(pricing.prompt);
         const completion = formatPrice(pricing.completion);
         const image = formatPrice(pricing.image);
@@ -43,7 +45,7 @@ export function renderModelInfoCard(modelId, target, meta) {
             ${meta.speed ? `<span>${escapeHtml(speedGlyph(meta.speed))}</span>` : ''}
             ${meta.context ? `<span>Context: ${escapeHtml(meta.context)}</span>` : ''}
         </div>
-        ${priceLines.length > 0 ? `<div class="info-row info-pricing">${priceLines.map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>` : ''}
+        ${priceLines.length > 0 ? `<div class="info-row info-pricing${meta.subscription ? ' info-subscription' : ''}">${priceLines.map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>` : ''}
         ${capParts.length > 0 ? `<div class="info-row info-caps">${escapeHtml(capParts.join(' \u00b7 '))}</div>` : ''}
         ${meta.notes ? `<div class="info-row info-notes">${escapeHtml(meta.notes)}</div>` : ''}
     </div>`;
@@ -61,7 +63,7 @@ export function updateGeminiOptionsVisibility() {
  * `approxImageCost` in MODEL_CONFIGS — hidden for models without one.
  */
 export function renderCostEstimate() {
-    const perImage = MODEL_CONFIGS[state.selectedModel]?.approxImageCost || 0;
+    const cfg = MODEL_CONFIGS[state.selectedModel];
     const count = state.imageCount || 1;
     const targets = [
         document.getElementById('costEstimate'),
@@ -69,15 +71,22 @@ export function renderCostEstimate() {
     ];
     for (const el of targets) {
         if (!el) continue;
-        if (perImage > 0) {
-            const total = perImage * count;
-            el.textContent = count > 1
-                ? `≈ $${formatUsd(total)} (${count} × $${formatUsd(perImage)})`
-                : `≈ $${formatUsd(total)}`;
+        if (cfg?.subscription) {
+            el.textContent = 'Included with subscription';
             el.hidden = false;
-            el.title = "Rough estimate from the provider's list price — actual OpenRouter billing may differ slightly";
+            el.title = 'This model is included in your NanoGPT subscription at no extra cost';
         } else {
-            el.hidden = true;
+            const perImage = cfg?.approxImageCost || 0;
+            if (perImage > 0) {
+                const total = perImage * count;
+                el.textContent = count > 1
+                    ? `≈ $${formatUsd(total)} (${count} × $${formatUsd(perImage)})`
+                    : `≈ $${formatUsd(total)}`;
+                el.hidden = false;
+                el.title = "Rough estimate from the provider's list price — actual billing may differ slightly";
+            } else {
+                el.hidden = true;
+            }
         }
     }
 }

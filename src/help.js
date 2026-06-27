@@ -17,12 +17,13 @@ export const HELP_SECTIONS = [
         title: 'Welcome',
         html: `
             <h3>Welcome to Imagen</h3>
-            <p>Imagen is a local-first UI for generating images through <strong>OpenRouter</strong>. Everything you make — images, prompts, settings — stays in your browser.</p>
+            <p>Imagen is a local-first UI for generating images through <strong>OpenRouter</strong> or <strong>NanoGPT</strong>. Everything you make — images, prompts, settings — stays in your browser.</p>
             <p>There are two ways to work:</p>
             <ul>
                 <li><strong>Manual mode</strong> — write a prompt, pick a model, click Generate.</li>
                 <li><strong>Orchestrator mode</strong> — upload two images and tick checkboxes; a vision model writes the complex image-to-image prompt for you.</li>
             </ul>
+            <p>Switch providers at any time from the <strong>Provider</strong> toggle at the top of the sidebar. Both keys are saved independently.</p>
             <p>And two free tools that don't touch the API at all: the <strong>Upscaler</strong> and <strong>Background Removal</strong> (see their sections).</p>
         `
     },
@@ -31,12 +32,21 @@ export const HELP_SECTIONS = [
         title: 'API Key',
         html: `
             <h3>Getting an API key</h3>
+            <p>Imagen supports two providers. Each key is saved independently — switch with the <strong>Provider</strong> toggle in the sidebar.</p>
+            <h4>OpenRouter</h4>
             <ol>
                 <li>Create an account at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> and add some credits.</li>
                 <li>Open the <strong>Keys</strong> section and create a new key.</li>
-                <li>Paste it into the <strong>OpenRouter API Key</strong> field in the sidebar and click <strong>Save Key</strong>.</li>
+                <li>Select <strong>OpenRouter</strong> in the Provider toggle, paste the key, and click <strong>Save Key</strong>.</li>
             </ol>
-            <p>The key is stored only in your browser. "Remember key" keeps it across restarts (localStorage); unticked, it lives only for the session. It is sent nowhere except to OpenRouter itself.</p>
+            <h4>NanoGPT</h4>
+            <ol>
+                <li>Create an account at <a href="https://nano-gpt.com" target="_blank" rel="noopener">nano-gpt.com</a> and subscribe or add credits.</li>
+                <li>Go to your account settings and copy your API key.</li>
+                <li>Select <strong>NanoGPT</strong> in the Provider toggle, paste the key, and click <strong>Save Key</strong>.</li>
+            </ol>
+            <p>NanoGPT image models are <strong>subscription-included</strong> — no per-image charge for the 5 bundled models. Vision, research, and AI-assist calls still use OpenRouter.</p>
+            <p>Keys are stored only in your browser. "Remember key" keeps them across restarts (localStorage); unticked, they live only for the session.</p>
         `
     },
     {
@@ -79,6 +89,7 @@ export const HELP_SECTIONS = [
             <p><strong>Free re-assembly:</strong> the vision analysis of your image pair is cached. Change toggles or style afterwards and re-assembling is instant and costs nothing — only swapping images (or the vision model) triggers a new paid analysis. A badge on the Assembled Prompt tells you when settings changed.</p>
             <p>Liked a result? Open it and click <strong>Iterate: use as Source</strong> to feed it back in for another pass.</p>
             <p>If the model doesn't know your subject (a niche character, a new product), describe it in <strong>Subject Context</strong> — or click 🔍 Research to look it up via Perplexity.</p>
+            <p><strong>On NanoGPT:</strong> only <em>Step Image Edit 2</em> and <em>Qwen Image</em> support img2img — the picker automatically filters to these when Orchestrator mode is on. Vision analysis and research still route through OpenRouter, so an OpenRouter key is also needed for those steps.</p>
         `
     },
     {
@@ -117,7 +128,7 @@ export const HELP_SECTIONS = [
                 <li>The <strong>Remove</strong> brush erases leftovers; the <strong>Keep</strong> brush restores anything taken by mistake. <kbd>[</kbd> and <kbd>]</kbd> resize the brush.</li>
                 <li><strong>Smart select (magic wand)</strong>: with it on, a single click selects the <em>whole connected color region</em> and removes it (Remove mode) or restores it (Keep mode) — no brushing required.</li>
                 <li><strong>Edge feather</strong> softens the cutout edge; <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> undo and redo strokes.</li>
-                <li><strong>✨ AI assist (optional, uses credits)</strong>: a vision model repaints the background a solid key color which is then removed locally — great for busy backgrounds. You always get a confirmation with the cost (≈ $0.04) before anything is charged, and the AI's version of the image replaces your working copy.</li>
+                <li><strong>✨ AI assist (optional, uses OpenRouter credits)</strong>: a vision model repaints the background a solid key color which is then removed locally — great for busy backgrounds. You always get a confirmation with the cost (≈ $0.04) before anything is charged. Requires an <strong>OpenRouter</strong> API key (not available with NanoGPT-only setup).</li>
             </ul>
             <p>Export as a transparent PNG, or save it back to the gallery.</p>
         `
