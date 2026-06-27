@@ -2,7 +2,7 @@
  * Orchestrator mode logic.
  */
 
-import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES } from './state.js';
+import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES, loadApiKeyForProvider } from './state.js';
 import { createModelPicker } from './model-picker.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
@@ -832,8 +832,8 @@ export function setupOrchestratorEventListeners(generateImages) {
     elements.researchSubjectBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!state.apiKey) {
-            showToast('Save your OpenRouter API key first', 'error');
+        if (!loadApiKeyForProvider('openrouter')) {
+            showToast('Subject research requires an OpenRouter API key — add one in the sidebar', 'error');
             return;
         }
         const current = elements.subjectContext.value.trim();
@@ -981,8 +981,8 @@ export async function assembleOrchestratorPrompt() {
     // still matches this image pair + model, skip the API entirely.
     const cached = getValidVisionCache();
 
-    if (!cached && !state.apiKey) {
-        showToast('Save your OpenRouter API key first', 'error');
+    if (!cached && !loadApiKeyForProvider('openrouter')) {
+        showToast('Vision analysis requires an OpenRouter API key — add one in the sidebar', 'error');
         return null;
     }
     hideOrchestratorPanel();
@@ -1114,9 +1114,17 @@ export function classifyError(err) {
     const isVision = stage === 'vision';
     const modelLabel = err.modelId ? '"' + err.modelId + '"' : 'this model';
 
+    // Vision, research, and AI-assist always route through OpenRouter.
+    // Generation routes through the active provider.
+    const isOpenRouterStage = stage === 'vision' || stage === 'research' || stage === 'image-edit';
+    const providerName = isOpenRouterStage ? 'OpenRouter' : (state.provider === 'nanogpt' ? 'NanoGPT' : 'OpenRouter');
+    const creditsUrl = (isOpenRouterStage || state.provider !== 'nanogpt')
+        ? 'https://openrouter.ai/credits'
+        : 'https://nano-gpt.com/account';
+
     if (err.kind === 'network') {
         return {
-            title: "Couldn't reach OpenRouter",
+            title: `Couldn't reach ${providerName}`,
             body: 'The request failed before reaching the server.',
             suggestion: 'Check your internet connection, then try again.',
             action: null
@@ -1124,25 +1132,25 @@ export function classifyError(err) {
     }
     if (status === 401) return {
         title: 'API key rejected',
-        body: 'OpenRouter rejected the API key currently saved.',
+        body: `${providerName} rejected the API key currently saved.`,
         suggestion: 'Re-paste your key into the sidebar and click "Save Key".',
         action: { label: 'Focus API key field', handler: () => { elements.apiKey?.focus(); elements.apiKey?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
     };
     if (status === 402) return {
         title: 'Insufficient credits',
-        body: "Your OpenRouter account doesn't have enough credits for this call.",
-        suggestion: 'Top up your balance at openrouter.ai/credits and try again.',
-        action: { label: 'Open OpenRouter credits', handler: () => window.open('https://openrouter.ai/credits', '_blank', 'noopener') }
+        body: `Your ${providerName} account doesn't have enough credits for this call.`,
+        suggestion: `Top up your credits at ${creditsUrl} and try again.`,
+        action: { label: `Open ${providerName} credits`, handler: () => window.open(creditsUrl, '_blank', 'noopener') }
     };
     if (status === 404) return {
         title: 'Model not available',
-        body: modelLabel + " isn't in OpenRouter's catalog right now.",
+        body: modelLabel + ` isn't in ${providerName}'s catalog right now.`,
         suggestion: 'Pick a different model from the dropdown.',
         action: null
     };
     if (status === 429) return {
         title: 'Rate limit hit',
-        body: 'OpenRouter is throttling requests for this model.',
+        body: `${providerName} is throttling requests for this model.`,
         suggestion: 'Wait a minute, or switch to a different model to keep working.',
         action: null
     };
@@ -1181,9 +1189,11 @@ export function classifyError(err) {
         action: null
     };
     if (typeof status === 'number' && status >= 500) return {
-        title: 'OpenRouter server error',
-        body: 'OpenRouter returned HTTP ' + status + '.',
-        suggestion: 'Wait a moment and try again. If it persists, check openrouter.ai/status.',
+        title: `${providerName} server error`,
+        body: `${providerName} returned HTTP ${status}.`,
+        suggestion: isOpenRouterStage || state.provider !== 'nanogpt'
+            ? 'Wait a moment and try again. If it persists, check openrouter.ai/status.'
+            : 'Wait a moment and try again.',
         action: null
     };
     return {

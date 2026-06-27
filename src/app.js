@@ -5,7 +5,7 @@
 
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
-import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider } from './state.js';
+import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, runWithConcurrency } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
@@ -403,6 +403,50 @@ function setupEventListeners() {
             elements.apiKey.value = '';
             showToast('API key cleared', 'success');
             renderOrchestratorReadiness();
+        }
+    });
+
+    elements.testApiKey.addEventListener('click', async () => {
+        const key = elements.apiKey.value.trim() || state.apiKey;
+        if (!key) { showToast('Enter an API key to test', 'error'); return; }
+        const btn = elements.testApiKey;
+        btn.disabled = true;
+        btn.textContent = 'Testing…';
+        try {
+            const prov = getProvider(state.provider);
+            const testUrl = prov.modelsUrl || prov.imageModelsUrl;
+            const res = await fetch(testUrl, { headers: prov.headers(key) });
+            if (res.ok) {
+                showToast('Connection successful — API key is valid', 'success');
+            } else {
+                const body = await res.text().catch(() => '');
+                let msg = '';
+                try { msg = JSON.parse(body).error?.message || ''; } catch (_) {}
+                showToast(`Key rejected (HTTP ${res.status})${msg ? ': ' + msg : ''}`, 'error');
+            }
+        } catch (e) {
+            showToast('Connection failed: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Test Connection';
+        }
+    });
+
+    elements.refreshModels.addEventListener('click', async () => {
+        const btn = elements.refreshModels;
+        btn.disabled = true;
+        btn.textContent = 'Refreshing…';
+        try {
+            // Clear cached model list so fetchImageModels re-fetches from network
+            sessionStorage.removeItem(`${MODEL_LIST_CACHE_KEY_PREFIX}${state.provider}_image`);
+            const models = await fetchImageModels(state.provider);
+            if (_generationPicker) _generationPicker.refresh(models);
+            showToast(`Model list refreshed (${models.length} models)`, 'success');
+        } catch (e) {
+            showToast('Failed to refresh models: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Refresh model list';
         }
     });
 

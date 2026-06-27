@@ -1785,6 +1785,28 @@ body.orchestrator-active #orchestratorWorkspace {
     cursor: not-allowed;
 }
 
+.btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 2px 0 4px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-family: inherit;
+}
+
+.btn-link:hover:not(:disabled) {
+    color: var(--text-primary);
+}
+
+.btn-link:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .btn-ghost-sm.loading .research-icon {
     animation: spin 1s linear infinite;
     display: inline-block;

@@ -19,7 +19,9 @@ export function initElements() {
     elements.geminiOptions = document.getElementById('geminiOptions');
     elements.apiKey = document.getElementById('apiKey');
     elements.saveApiKey = document.getElementById('saveApiKey');
+    elements.testApiKey = document.getElementById('testApiKey');
     elements.clearApiKey = document.getElementById('clearApiKey');
+    elements.refreshModels = document.getElementById('refreshModels');
     elements.rememberKeyToggle = document.getElementById('rememberKeyToggle');
     elements.imageCount = document.getElementById('imageCount');
     elements.decreaseCount = document.getElementById('decreaseCount');

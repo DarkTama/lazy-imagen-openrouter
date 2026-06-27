@@ -91,6 +91,7 @@
                         <div class="custom-select-option" data-value="openrouter/auto" role="option">Auto (OpenRouter chooses)</div>
                     </div>
                 </div>
+                <button type="button" class="btn-link" id="refreshModels">Refresh model list</button>
                 <div class="model-info-card" id="generationModelInfo"></div>
             </div>
 
@@ -154,6 +155,7 @@
                 <p class="api-key-note" id="apiKeyNote">Your key is stored locally in this browser and never sent to any server other than OpenRouter.</p>
                 <input type="password" id="apiKey" placeholder="sk-or-..." class="text-input">
                 <button type="button" class="btn btn-ghost" id="saveApiKey">Save Key</button>
+                <button type="button" class="btn btn-ghost" id="testApiKey">Test Connection</button>
                 <label class="toggle-switch-label api-key-toggle-row">
                     <span>Remember key</span>
                     <span class="toggle-switch">

@@ -1,16 +1,25 @@
 /**
- * All fetch calls to OpenRouter.
+ * API calls for image generation, vision analysis, subject research, and model fetching.
+ * Image generation uses the active provider. Vision/research/AI-assist always use OpenRouter.
  */
 
-import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, loadApiKeyForProvider } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal } from './utils.js';
 import { retryWithBackoff } from './retry.js';
 
-// Returns the active provider's base URL and auth headers.
+// Returns the active provider's base URL and auth headers (for image generation).
 function providerFetchArgs() {
     const prov = getProvider(state.provider);
     return { base: prov.base, headers: prov.headers(state.apiKey) };
+}
+
+// Vision analysis, subject research, and AI-assist always route through OpenRouter
+// regardless of which image provider is active, because vision models (Gemini, GPT-4o, etc.)
+// are only available on OpenRouter.
+function openrouterFetchArgs() {
+    const prov = getProvider('openrouter');
+    return { base: prov.base, headers: prov.headers(loadApiKeyForProvider('openrouter')) };
 }
 
 // ===== Structured API Error =====
@@ -57,7 +66,7 @@ Output strictly valid JSON. No prose around it. No code fences.`;
 export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
+        const { base, headers } = openrouterFetchArgs();
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -140,7 +149,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
 export async function researchSubject(subjectText, modelId) {
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
+        const { base, headers } = openrouterFetchArgs();
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -243,7 +252,7 @@ export function extractImageFromMessage(message) {
 export async function runImageEdit(imageDataUri, instruction, modelId, { signal } = {}) {
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
+        const { base, headers } = openrouterFetchArgs();
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             signal,
