@@ -3,20 +3,32 @@
  * All calls (generation, vision, research) use the active provider's endpoint and key.
  */
 
-import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS, loadApiKeyForProvider } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal } from './utils.js';
 import { retryWithBackoff } from './retry.js';
 
-// Returns the active provider's base URL and auth headers.
-function providerFetchArgs() {
-    const prov = getProvider(state.provider);
-    return { base: prov.base, headers: prov.headers(state.apiKey) };
+// Returns provider base URL and auth headers for a given or active provider.
+export function providerFetchArgs(providerId = null) {
+    const pId = providerId || state.generationProvider || state.provider || 'openrouter';
+    const prov = getProvider(pId);
+    if (!prov) {
+        throw new Error(`Unknown provider: ${pId}`);
+    }
+    const key = (providerId && providerId !== state.generationProvider)
+        ? loadApiKeyForProvider(pId)
+        : (state.apiKey || loadApiKeyForProvider(pId));
+    return {
+        providerId: pId,
+        provider: prov,
+        base: prov.base,
+        headers: prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' }
+    };
 }
 
 // ===== Structured API Error =====
 export class ApiError extends Error {
-    constructor({ status, message, body, kind, stage, modelId }) {
+    constructor({ status, message, body, kind, stage, modelId, providerId, role }) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
@@ -24,6 +36,8 @@ export class ApiError extends Error {
         this.kind = kind;
         this.stage = stage;
         this.modelId = modelId;
+        this.providerId = providerId;
+        this.role = role || stage;
     }
 }
 
@@ -55,10 +69,11 @@ Return ONLY a JSON object with these keys. Each value is a string that is SPECIF
 
 Output strictly valid JSON. No prose around it. No code fences.`;
 
-export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
+export async function runVisionAnalysis(sourceB64, referenceB64, modelId, providerId = null) {
+    const targetProviderId = providerId || state.orchestrator?.visionProvider || 'openrouter';
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
+        const { base, headers } = providerFetchArgs(targetProviderId);
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -79,7 +94,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
         });
     } catch (netErr) {
         throw new ApiError({
-            kind: 'network', stage: 'vision', modelId,
+            kind: 'network', stage: 'vision', role: 'vision', modelId, providerId: targetProviderId,
             message: netErr.message || 'Network request failed',
             body: String(netErr)
         });
@@ -90,7 +105,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
         let parsedMsg;
         try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
         throw new ApiError({
-            kind: 'http', stage: 'vision', modelId,
+            kind: 'http', stage: 'vision', role: 'vision', modelId, providerId: targetProviderId,
             status: response.status,
             message: parsedMsg || `HTTP ${response.status}`,
             body: bodyText
@@ -101,7 +116,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
     const raw = data.choices?.[0]?.message?.content;
     if (typeof raw !== 'string' || !raw.trim()) {
         throw new ApiError({
-            kind: 'refusal', stage: 'vision', modelId,
+            kind: 'refusal', stage: 'vision', role: 'vision', modelId, providerId: targetProviderId,
             message: 'Vision model returned no text content',
             body: JSON.stringify(data, null, 2)
         });
@@ -109,7 +124,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
 
     if (looksLikeRefusal(raw)) {
         throw new ApiError({
-            kind: 'refusal', stage: 'vision', modelId,
+            kind: 'refusal', stage: 'vision', role: 'vision', modelId, providerId: targetProviderId,
             message: 'Vision model refused to describe the image',
             body: raw
         });
@@ -121,7 +136,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
         const match = raw.match(/\{[\s\S]*\}/);
         if (!match) {
             throw new ApiError({
-                kind: 'parse', stage: 'vision', modelId,
+                kind: 'parse', stage: 'vision', role: 'vision', modelId, providerId: targetProviderId,
                 message: 'Vision response was not valid JSON',
                 body: raw
             });
@@ -130,7 +145,7 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
             return JSON.parse(match[0]);
         } catch (e) {
             throw new ApiError({
-                kind: 'parse', stage: 'vision', modelId,
+                kind: 'parse', stage: 'vision', role: 'vision', modelId, providerId: targetProviderId,
                 message: 'Vision JSON block failed to parse',
                 body: raw
             });
@@ -138,10 +153,11 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId) {
     }
 }
 
-export async function researchSubject(subjectText, modelId) {
+export async function researchSubject(subjectText, modelId, providerId = null) {
+    const targetProviderId = providerId || state.orchestrator?.researchProvider || 'openrouter';
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
+        const { base, headers } = providerFetchArgs(targetProviderId);
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -318,8 +334,70 @@ function nanoSizeFor(st) {
     return base;
 }
 
-export async function generateSingleImage(prompt, modelConfig, { onRetry } = {}) {
-    const strategy = getProvider(state.provider).imageStrategy;
+export async function testProviderConnection(providerId) {
+    try {
+        const prov = getProvider(providerId);
+        if (!prov) return { ok: false, error: 'Provider not found' };
+        const key = loadApiKeyForProvider(providerId);
+        const headers = prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' };
+        const testUrl = prov.modelsUrl || `${prov.base}/models`;
+        const resp = await fetch(testUrl, { method: 'GET', headers });
+        if (!resp.ok) {
+            const txt = await resp.text().catch(() => '');
+            return { ok: false, error: `HTTP ${resp.status}: ${txt.slice(0, 150)}` };
+        }
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err.message || 'Connection failed' };
+    }
+}
+
+export async function fetchProviderModels(providerId, { force = false } = {}) {
+    const prov = getProvider(providerId);
+    if (!prov) return [];
+    if (providerId === 'openrouter') {
+        return fetchImageModels('openrouter');
+    }
+    if (providerId === 'nanogpt') {
+        return fetchImageModels('nanogpt');
+    }
+
+    if (force) sessionStorage.removeItem(modelListCacheKey(providerId, 'all'));
+    const cached = readModelListCache(providerId, 'all');
+    if (cached) return cached;
+
+    try {
+        const key = loadApiKeyForProvider(providerId);
+        const headers = prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' };
+        const url = prov.modelsUrl || `${prov.base}/models`;
+        const resp = await fetch(url, { headers });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const list = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+        const models = list.map(m => {
+            const id = typeof m === 'string' ? m : m.id;
+            const name = typeof m === 'object' && m.name ? m.name : id;
+            return {
+                id,
+                name,
+                provider: providerId,
+                supportsImageInput: true,
+                maxReferences: 1
+            };
+        }).filter(m => m.id);
+
+        writeModelListCache(providerId, 'all', models);
+        return models;
+    } catch (e) {
+        console.warn(`Failed to fetch models for ${providerId}:`, e);
+        return [];
+    }
+}
+
+export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } = {}) {
+    const providerId = state.generationProvider || state.provider || 'openrouter';
+    const prov = getProvider(providerId);
+    const strategy = prov.imageStrategy || 'images-endpoint';
 
     const doGenerate = async () => {
     const content = [];
@@ -354,7 +432,7 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
                 content: content.length === 1 ? prompt : content
             }
         ],
-        modalities: modelConfig.modalities
+        modalities: modelConfig.modalities || ['image', 'text']
     };
 
     if (modelConfig.supportsImageSize && state.selectedModel.includes('gemini')) {
@@ -371,7 +449,7 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
     const modelId = state.selectedModel;
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
+        const { base, headers } = providerFetchArgs(providerId);
         response = await fetch(`${base}/chat/completions`, {
             method: 'POST',
             headers,
@@ -379,7 +457,7 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
         });
     } catch (netErr) {
         throw new ApiError({
-            kind: 'network', stage: 'generation', modelId,
+            kind: 'network', stage: 'generation', role: 'generation', modelId, providerId,
             message: netErr.message || 'Network request failed',
             body: String(netErr)
         });
@@ -390,7 +468,7 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
         let parsedMsg;
         try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
         throw new ApiError({
-            kind: 'http', stage: 'generation', modelId,
+            kind: 'http', stage: 'generation', role: 'generation', modelId, providerId,
             status: response.status,
             message: parsedMsg || `HTTP ${response.status}`,
             body: bodyText
@@ -402,7 +480,7 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
 
     if (!message) {
         throw new ApiError({
-            kind: 'no-image', stage: 'generation', modelId,
+            kind: 'no-image', stage: 'generation', role: 'generation', modelId, providerId,
             message: 'No message in API response',
             body: JSON.stringify(data, null, 2)
         });
@@ -414,21 +492,21 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
     if (imageUrl) return imageUrl;
 
     throw new ApiError({
-        kind: 'no-image', stage: 'generation', modelId,
+        kind: 'no-image', stage: 'generation', role: 'generation', modelId, providerId,
         message: 'No image in response',
         body: JSON.stringify(data, null, 2)
     });
     };
 
-    const doGenerateNano = async () => {
-        const { headers } = providerFetchArgs();
-        const prov = getProvider('nanogpt');
+    const doGenerateImagesEndpoint = async () => {
+        const { headers } = providerFetchArgs(providerId);
         const modelId = state.selectedModel;
+        const endpointUrl = prov.imagesUrl || `${prov.base}/images/generations`;
         const body = {
             model: modelId,
             prompt,
             n: 1,
-            size: nanoSizeFor(state),
+            size: (typeof nanoSizeFor === 'function' && providerId === 'nanogpt') ? nanoSizeFor(state) : state.imageSize,
             response_format: 'b64_json'
         };
         if (modelConfig.supportsImageInput && state.references.length) {
@@ -438,10 +516,10 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
         }
         let response;
         try {
-            response = await fetch(prov.imagesUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+            response = await fetch(endpointUrl, { method: 'POST', headers, body: JSON.stringify(body) });
         } catch (netErr) {
             throw new ApiError({
-                kind: 'network', stage: 'generation', modelId,
+                kind: 'network', stage: 'generation', role: 'generation', modelId, providerId,
                 message: netErr.message || 'Network request failed',
                 body: String(netErr)
             });
@@ -451,25 +529,28 @@ export async function generateSingleImage(prompt, modelConfig, { onRetry } = {})
             let parsedMsg;
             try { parsedMsg = JSON.parse(bodyText).error?.message; } catch (_) { /* not JSON */ }
             throw new ApiError({
-                kind: 'http', stage: 'generation', modelId,
+                kind: 'http', stage: 'generation', role: 'generation', modelId, providerId,
                 status: response.status,
                 message: parsedMsg || `HTTP ${response.status}`,
                 body: bodyText
             });
         }
         const data = await response.json();
-        const b64 = data?.data?.[0]?.b64_json;
-        if (!b64) {
-            throw new ApiError({
-                kind: 'no-image', stage: 'generation', modelId,
-                message: 'No image in NanoGPT response',
-                body: JSON.stringify(data, null, 2)
-            });
+        const first = data?.data?.[0];
+        if (first?.b64_json) {
+            return `data:image/png;base64,${first.b64_json}`;
         }
-        return `data:image/png;base64,${b64}`;
+        if (first?.url) {
+            return first.url;
+        }
+        throw new ApiError({
+            kind: 'no-image', stage: 'generation', role: 'generation', modelId, providerId,
+            message: `No image returned from ${prov.name || providerId}`,
+            body: JSON.stringify(data, null, 2)
+        });
     };
 
-    const fn = strategy === 'images-endpoint' ? doGenerateNano : doGenerate;
+    const fn = strategy === 'images-endpoint' ? doGenerateImagesEndpoint : doGenerate;
 
     if (state.autoRetryEnabled) {
         return retryWithBackoff(fn, { onRetry });
@@ -608,38 +689,49 @@ function normalizeNanoImageModel(m, subscriptionSet) {
  * Pass force:true to bypass the 24h sessionStorage cache.
  */
 export async function fetchChatModels(providerId, { force = false } = {}) {
-    if (providerId !== 'nanogpt') {
+    if (providerId === 'openrouter') {
         return VISION_MODELS;
     }
 
-    if (force) sessionStorage.removeItem(modelListCacheKey('nanogpt', 'chat'));
+    if (force) sessionStorage.removeItem(modelListCacheKey(providerId, 'chat'));
 
-    const cached = readModelListCache('nanogpt', 'chat');
+    const cached = readModelListCache(providerId, 'chat');
     if (cached) return cached;
 
-    const prov = getProvider('nanogpt');
-    const imageIds = new Set(SUBSCRIPTION_IMAGE_ALLOWLIST.map(m => m.id));
+    const prov = getProvider(providerId);
+    if (!prov) return [];
 
     try {
-        const resp = await fetch(prov.modelsUrl, { headers: prov.headers(state.apiKey) });
+        const key = loadApiKeyForProvider(providerId);
+        const headers = prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' };
+        const url = prov.modelsUrl || `${prov.base}/models`;
+        const resp = await fetch(url, { headers });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const list = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+        const imageIds = providerId === 'nanogpt' ? new Set(SUBSCRIPTION_IMAGE_ALLOWLIST.map(m => m.id)) : new Set();
         const models = list
-            .filter(m => m?.id && !imageIds.has(m.id))
-            .map(m => ({
-                id: m.id,
-                name: m.id,
-                kind: 'vision',
-                provider: 'nanogpt',
-                bestFor: 'Chat & vision',
-                speed: 'fast',
-                price: null
-            }));
-        if (models.length > 0) writeModelListCache('nanogpt', 'chat', models);
+            .filter(m => {
+                const id = typeof m === 'string' ? m : m?.id;
+                return id && !imageIds.has(id);
+            })
+            .map(m => {
+                const id = typeof m === 'string' ? m : m.id;
+                const name = typeof m === 'object' && m.name ? m.name : id;
+                return {
+                    id,
+                    name,
+                    kind: 'vision',
+                    provider: providerId,
+                    bestFor: 'Chat & vision',
+                    speed: 'fast',
+                    price: null
+                };
+            });
+        if (models.length > 0) writeModelListCache(providerId, 'chat', models);
         return models;
     } catch (e) {
-        console.warn('fetchChatModels failed:', e);
+        console.warn(`fetchChatModels failed for ${providerId}:`, e);
         return [];
     }
 }
@@ -654,6 +746,7 @@ export async function fetchImageModels(providerId) {
     if (cached) return cached;
 
     const prov = getProvider(providerId);
+    if (!prov) return [];
     let models;
 
     try {
@@ -678,7 +771,7 @@ export async function fetchImageModels(providerId) {
                     });
                 }
             }
-        } else {
+        } else if (providerId === 'openrouter') {
             const resp = await fetch(prov.modelsUrl);
             if (!resp.ok) throw new Error(`models ${resp.status}`);
             const data = await resp.json();
@@ -686,6 +779,9 @@ export async function fetchImageModels(providerId) {
             models = list
                 .filter(m => m?.id && m.architecture?.modality?.includes('->image'))
                 .map(normalizeOpenRouterModel);
+        } else {
+            // Custom provider with /models
+            return fetchProviderModels(providerId);
         }
 
         // Merge live-only models into MODEL_CONFIGS so existing lookups (cost, readiness, info card) work
@@ -710,14 +806,17 @@ export async function fetchImageModels(providerId) {
                 maxReferences: a.maxReferences, subscription: true
             }));
         }
-        return Object.entries(MODEL_CONFIGS)
-            .filter(([, cfg]) => !cfg.provider || cfg.provider === 'openrouter')
-            .map(([id, cfg]) => ({
-                id, name: cfg.name || id, kind: 'image', provider: 'openrouter',
-                price: cfg.approxImageCost ? { perImage: cfg.approxImageCost } : null,
-                supportsImageInput: cfg.supportsImageInput || false,
-                maxReferences: cfg.maxReferences || 0, subscription: false
-            }));
+        if (providerId === 'openrouter') {
+            return Object.entries(MODEL_CONFIGS)
+                .filter(([, cfg]) => !cfg.provider || cfg.provider === 'openrouter')
+                .map(([id, cfg]) => ({
+                    id, name: cfg.name || id, kind: 'image', provider: 'openrouter',
+                    price: cfg.approxImageCost ? { perImage: cfg.approxImageCost } : null,
+                    supportsImageInput: cfg.supportsImageInput || false,
+                    maxReferences: cfg.maxReferences || 0, subscription: false
+                }));
+        }
+        return [];
     }
 }
 

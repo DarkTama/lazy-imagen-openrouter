@@ -105,3 +105,83 @@ describe('classifyError', () => {
     expect(result.body).toContain('Something weird');
   });
 });
+
+describe('custom provider api execution & connection test', () => {
+  it('testProviderConnection handles success and failure', async () => {
+    const { testProviderConnection } = await import('../src/api.js');
+    const { saveCustomProvider } = await import('../src/providers.js');
+
+    const custom = saveCustomProvider({
+      name: 'Mock Ollama',
+      base: 'http://localhost:11434/v1',
+      capabilities: { imageGen: true, chatVision: true }
+    });
+
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async () => ({
+        ok: true,
+        json: async () => ({ data: [] })
+      });
+      const resOk = await testProviderConnection(custom.id);
+      expect(resOk.ok).toBe(true);
+
+      global.fetch = async () => ({
+        ok: false,
+        status: 401,
+        text: async () => 'Unauthorized'
+      });
+      const resErr = await testProviderConnection(custom.id);
+      expect(resErr.ok).toBe(false);
+      expect(resErr.error).toContain('401');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('generateSingleImage dispatches to custom images endpoint and reads b64_json or url', async () => {
+    const { generateSingleImage } = await import('../src/api.js');
+    const { saveCustomProvider } = await import('../src/providers.js');
+    const { state } = await import('../src/state.js');
+
+    const custom = saveCustomProvider({
+      name: 'Custom Image Gen',
+      base: 'https://api.custom.com/v1',
+      capabilities: { imageGen: true, chatVision: false },
+      imageStrategy: 'images-endpoint'
+    });
+
+    state.generationProvider = custom.id;
+    state.selectedModel = 'model-xyz';
+    state.autoRetryEnabled = false;
+
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async (url, opts) => {
+        expect(url).toBe('https://api.custom.com/v1/images/generations');
+        const body = JSON.parse(opts.body);
+        expect(body.model).toBe('model-xyz');
+        return {
+          ok: true,
+          json: async () => ({ data: [{ b64_json: 'QUJDREVGRw==' }] })
+        };
+      };
+
+      const resultB64 = await generateSingleImage('a cute puppy');
+      expect(resultB64).toBe('data:image/png;base64,QUJDREVGRw==');
+
+      global.fetch = async () => ({
+        ok: true,
+        json: async () => ({ data: [{ url: 'https://cdn.custom.com/img.png' }] })
+      });
+
+      const resultUrl = await generateSingleImage('a landscape');
+      expect(resultUrl).toBe('https://cdn.custom.com/img.png');
+    } finally {
+      global.fetch = originalFetch;
+      state.generationProvider = 'openrouter';
+      state.selectedModel = 'google/gemini-2.5-flash-image';
+    }
+  });
+});
+
