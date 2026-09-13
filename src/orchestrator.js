@@ -3,6 +3,7 @@
  */
 
 import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES } from './state.js';
+import { getProvidersByCapability, getProvider } from './providers.js';
 import { createModelPicker } from './model-picker.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
@@ -12,15 +13,49 @@ import { isMobileLayout, renderModelInfoCard } from './ui.js';
 
 let _visionPicker = null;
 
-export function populateResearchModels(providerId) {
+export function renderOrchestratorProviderSelectors() {
+    const chatProviders = getProvidersByCapability('chatVision');
+
+    if (elements.visionProviderSelect) {
+        elements.visionProviderSelect.innerHTML = '';
+        chatProviders.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name || p.label || p.id;
+            if (p.id === (state.orchestrator.visionProvider || 'openrouter')) {
+                opt.selected = true;
+            }
+            elements.visionProviderSelect.appendChild(opt);
+        });
+    }
+
+    if (elements.researchProviderSelect) {
+        elements.researchProviderSelect.innerHTML = '';
+        chatProviders.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name || p.label || p.id;
+            if (p.id === (state.orchestrator.researchProvider || 'openrouter')) {
+                opt.selected = true;
+            }
+            elements.researchProviderSelect.appendChild(opt);
+        });
+    }
+}
+
+export function populateResearchModels(providerId = null) {
     if (!elements.researchModelSelect) return;
     elements.researchModelSelect.innerHTML = '';
-    const isNano = providerId === 'nanogpt';
-    const models = isNano ? state.fetchedModels.nanogpt.vision : RESEARCH_MODELS;
-    if (isNano && models.length === 0) {
+    const pId = providerId || state.orchestrator.researchProvider || 'openrouter';
+    const isNano = pId === 'nanogpt';
+    const models = isNano
+        ? (state.fetchedModels.nanogpt?.vision || [])
+        : (pId === 'openrouter' ? RESEARCH_MODELS : (state.fetchedModels[pId]?.vision || []));
+
+    if (models.length === 0 && pId !== 'openrouter') {
         const opt = document.createElement('option');
         opt.value = '';
-        opt.textContent = 'Click ↻ in Vision Analyst to fetch NanoGPT models';
+        opt.textContent = 'Click ↻ in Vision Analyst or custom model below';
         opt.disabled = true;
         elements.researchModelSelect.appendChild(opt);
         return;
@@ -35,14 +70,18 @@ export function populateResearchModels(providerId) {
     });
 }
 
-export function rebuildOrchestratorModelPickers(providerId) {
+export function rebuildOrchestratorModelPickers(providerId = null) {
+    const vProv = providerId || state.orchestrator.visionProvider || 'openrouter';
+    const rProv = state.orchestrator.researchProvider || 'openrouter';
+    renderOrchestratorProviderSelectors();
+
     if (_visionPicker) {
-        const models = providerId === 'nanogpt'
-            ? state.fetchedModels.nanogpt.vision
-            : VISION_MODELS;
+        const models = vProv === 'openrouter'
+            ? VISION_MODELS
+            : (state.fetchedModels[vProv]?.vision || []);
         _visionPicker.refresh(models);
     }
-    populateResearchModels(providerId);
+    populateResearchModels(rProv);
 }
 
 export function setupOrchestrator() {
@@ -55,9 +94,10 @@ export function setupOrchestrator() {
         container: elements.visionModelOptions,
         trigger: elements.visionModelTrigger,
         valueDisplay: elements.visionModelValue,
-        getModels: () => state.provider === 'nanogpt'
-            ? state.fetchedModels.nanogpt.vision
-            : VISION_MODELS,
+        getModels: () => {
+            const vProv = state.orchestrator.visionProvider || 'openrouter';
+            return vProv === 'openrouter' ? VISION_MODELS : (state.fetchedModels[vProv]?.vision || []);
+        },
         getSelected: () => state.orchestrator.visionModel,
         onSelect(id) {
             state.orchestrator.visionModel = id;
@@ -69,16 +109,19 @@ export function setupOrchestrator() {
         kind: 'vision',
         searchPlaceholder: 'Search vision models…',
         onRefresh: async () => {
-            const models = await fetchChatModels(state.provider, { force: true });
-            state.fetchedModels[state.provider].vision = models;
-            populateResearchModels(state.provider);
+            const vProv = state.orchestrator.visionProvider || 'openrouter';
+            const models = await fetchChatModels(vProv, { force: true });
+            if (!state.fetchedModels[vProv]) state.fetchedModels[vProv] = {};
+            state.fetchedModels[vProv].vision = models;
+            populateResearchModels(state.orchestrator.researchProvider);
             return models;
         }
     });
     const currentVision = VISION_MODELS_BY_ID[o.visionModel] || VISION_MODELS[0];
     elements.visionModelValue.textContent = currentVision.name;
 
-    populateResearchModels(state.provider);
+    renderOrchestratorProviderSelectors();
+    populateResearchModels(o.researchProvider || state.provider);
 
     applyOrchestratorMode(o.enabled);
     elements.orchestratorToggle.checked = o.enabled;
@@ -858,6 +901,22 @@ export function setupOrchestratorEventListeners(generateImages) {
         markPromptStale();
     }, 250));
 
+    if (elements.visionProviderSelect) {
+        elements.visionProviderSelect.addEventListener('change', () => {
+            o.visionProvider = elements.visionProviderSelect.value;
+            saveOrchestratorState();
+            rebuildOrchestratorModelPickers();
+        });
+    }
+
+    if (elements.researchProviderSelect) {
+        elements.researchProviderSelect.addEventListener('change', () => {
+            o.researchProvider = elements.researchProviderSelect.value;
+            saveOrchestratorState();
+            populateResearchModels(o.researchProvider);
+        });
+    }
+
     elements.researchModelSelect.addEventListener('change', () => {
         o.researchModel = elements.researchModelSelect.value;
         saveOrchestratorState();
@@ -866,7 +925,9 @@ export function setupOrchestratorEventListeners(generateImages) {
     elements.researchSubjectBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!state.apiKey) {
+        const rProv = o.researchProvider || 'openrouter';
+        const apiKey = state.apiKey; // or loaded per provider
+        if (!apiKey) {
             showToast('Save your API key first', 'error');
             return;
         }
@@ -880,7 +941,7 @@ export function setupOrchestratorEventListeners(generateImages) {
         elements.researchSubjectBtn.classList.add('loading');
         elements.researchSubjectBtn.disabled = true;
         try {
-            const result = await researchSubject(current, o.researchModel);
+            const result = await researchSubject(current, o.researchModel, rProv);
             o.subjectContext = result;
             elements.subjectContext.value = result;
             saveOrchestratorState();
@@ -1027,7 +1088,7 @@ export async function assembleOrchestratorPrompt() {
         if (cached) {
             vision = cached.analysis;
         } else {
-            vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel);
+            vision = await runVisionAnalysis(o.sourceImage, o.referenceImage, visionModel, o.visionProvider);
             _visionCache = {
                 srcFp: imageFingerprint(o.sourceImage),
                 refFp: imageFingerprint(o.referenceImage),

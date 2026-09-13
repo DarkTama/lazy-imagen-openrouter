@@ -97,6 +97,10 @@ export function initElements() {
     elements.owReadiness = document.getElementById('owReadiness');
     elements.iterateAsSource = document.getElementById('iterateAsSource');
 
+    // Orchestrator Provider Selectors
+    elements.visionProviderSelect = document.getElementById('visionProviderSelect');
+    elements.researchProviderSelect = document.getElementById('researchProviderSelect');
+
     // Sidebar Toggle (mobile)
     elements.sidebarToggle = document.getElementById('sidebarToggle');
     elements.sidebar = document.querySelector('.sidebar');

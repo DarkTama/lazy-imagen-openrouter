@@ -131,3 +131,15 @@ describe('assemblePrompt', () => {
     expect(result).toContain('Additional notes: Make the lighting more dramatic');
   });
 });
+
+describe('orchestrator role provider configuration', () => {
+  it('supports decoupled vision and research providers', async () => {
+    const { state } = await import('../src/state.js');
+    state.orchestrator.visionProvider = 'nanogpt';
+    state.orchestrator.researchProvider = 'custom_ollama';
+
+    expect(state.orchestrator.visionProvider).toBe('nanogpt');
+    expect(state.orchestrator.researchProvider).toBe('custom_ollama');
+  });
+});
+
