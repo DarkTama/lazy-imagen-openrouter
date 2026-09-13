@@ -138,6 +138,7 @@ function rebuildAllProviderSelectors() {
 function openProviderModal() {
     if (!elements.providerModal) return;
     elements.providerModal.hidden = false;
+    elements.providerModal.classList.add('active');
     renderProviderModalList();
     resetProviderForm();
 }
@@ -145,6 +146,7 @@ function openProviderModal() {
 function closeProviderModal() {
     if (!elements.providerModal) return;
     elements.providerModal.hidden = true;
+    elements.providerModal.classList.remove('active');
 }
 
 function renderProviderModalList() {
