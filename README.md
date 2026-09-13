@@ -28,12 +28,15 @@ As per the original project, this modified software remains open-source and is l
 - **Editable prompt preview** — char count, copy button, and a "settings changed — re-assemble" badge so a stale prompt never surprises you.
 - **Mobile-friendly workspace** — side-by-side slots, compact toggle grid, sticky Generate footer at phone sizes.
 
-### 🔌 Dual-Provider Support (OpenRouter + NanoGPT)
-- **Quick-switch** between OpenRouter and NanoGPT with a toggle at the top of the sidebar; both API keys are saved independently.
-- **OpenRouter**: full catalogue of generation, vision, and research models; live pricing fetched from the API.
-- **NanoGPT**: 5 subscription-included image models (no per-image charge) — `Step Image Edit 2`, `Z Image Turbo`, `Qwen Image`, `HiDream`, `Chroma`. Generation calls go to NanoGPT's images endpoint; vision, research, and AI-assist still route through OpenRouter.
-- **Live model list**: the model picker fetches the current model list from the active provider on startup (cached 24 h) with a ↻ refresh button.
-- **Searchable model picker**: ilike search over model ID and name, sort by name / price / subscription-first, filter to subscription-only or img2img-capable models.
+### 🔌 Multi-Provider Support & Arbitrary OpenAI Endpoints
+- **Built-in providers**: OpenRouter and NanoGPT ready out of the box with independent API keys and tailored model catalogs.
+- **Custom OpenAI-compatible providers**: Connect any local or cloud OpenAI-compatible endpoint (Ollama, LM Studio, LocalAI, vLLM, Groq, Together, DeepSeek) via the Provider Management modal (`⚙️` button in the sidebar).
+- **Independent role delegation**:
+  - **Generation Provider**: Main sidebar image generation.
+  - **Vision Analyst Provider**: Orchestrator Advanced drawer (powers automatic feature extraction from Source/Reference pairs).
+  - **Subject Research Provider**: Orchestrator Subject Context drawer (powers background knowledge search).
+- **Format Flexibility**: Custom providers support both standard OpenAI `/v1/images/generations` (`b64_json` and `url`) and multimodal `/v1/chat/completions`.
+- **Live model lists & connection tester**: In-modal connection verification and automatic model fetching via `/models`.
 
 ### 📊 Model Info Cards
 Every model dropdown shows pricing (live, from the provider API), best-for descriptors, speed indicator, context window, and capability summary. Subscription-included NanoGPT models show "Included with NanoGPT subscription" instead of a price.
@@ -292,6 +295,29 @@ Strong all-rounder. Supports image-to-image with up to 3 references.
 - **Notes** — extra context.
 
 For a custom model ID typed into the override field, the card shows "Info unavailable for custom IDs."
+
+## ⚙️ Custom Provider Configuration Guide
+
+### Connecting Local or Cloud Endpoints
+Click the **⚙️ Manage Providers** button in the sidebar next to the Provider selection to configure custom endpoints.
+
+1. Click **+ Add Custom**.
+2. Set a **Provider Name** (e.g., `Local Ollama`, `LM Studio`, `Groq`).
+3. Enter the OpenAI-compatible **Base URL** (e.g., `http://localhost:11434/v1`).
+4. (Optional) Provide an API Key.
+5. Select capabilities:
+   - **Image Generation**: provider will appear in the Sidebar generation dropdown.
+   - **Chat / Vision / Analysis**: provider will appear in Orchestrator Vision Analyst & Subject Research dropdowns.
+6. Select the Image API format:
+   - `/v1/images/generations` (Standard OpenAI image format)
+   - `/v1/chat/completions` with modalities (e.g. OpenRouter style)
+7. Click **Test Connection** to verify reachability and `/models` response, then click **Save Provider**.
+
+### Local Server CORS Configuration
+Because this web app runs locally in your browser, local servers must allow Cross-Origin Resource Sharing (CORS):
+- **Ollama**: start with `OLLAMA_ORIGINS="*" ollama serve` (or set the environment variable in your system).
+- **LocalAI**: ensure `CORS_ORIGINS="*"` is configured in your server environment.
+- **LM Studio**: enable the Local Server CORS toggle in LM Studio developer settings.
 
 ### Troubleshooting
 
