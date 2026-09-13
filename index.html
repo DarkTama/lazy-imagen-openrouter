@@ -637,10 +637,15 @@
     <!-- Custom Provider Management Modal -->
     <div class="modal" id="providerModal" hidden>
         <div class="modal-overlay" id="providerModalOverlay"></div>
-        <div class="modal-dialog provider-modal-dialog">
-            <div class="modal-header">
-                <h2 class="modal-title">Provider Management</h2>
-                <button type="button" class="btn-close" id="providerModalClose" aria-label="Close provider modal">&times;</button>
+        <div class="modal-content provider-modal-dialog">
+            <button type="button" class="modal-close" id="providerModalClose" aria-label="Close provider modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <div class="provider-modal-header">
+                <h2 class="provider-modal-title">Provider Management</h2>
             </div>
             <div class="modal-body provider-modal-body">
                 <div class="provider-modal-left">

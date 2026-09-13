@@ -4200,6 +4200,24 @@ body.orchestrator-active #promptInput::after {
 .provider-modal-dialog {
     max-width: 800px;
     width: 90vw;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+}
+
+.provider-modal-header {
+    display: flex;
+    align-items: center;
+    padding-right: 48px;
+    margin-bottom: 8px;
+}
+
+.provider-modal-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
 }
 
 .provider-modal-body {

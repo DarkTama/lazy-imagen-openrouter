@@ -9,7 +9,7 @@ import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
-import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal, renderGenerationProviderSelect } from './ui.js';
+import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal, renderGenerationProviderSelect, activateFocusTrap } from './ui.js';
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
 import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl, rebuildOrchestratorModelPickers } from './orchestrator.js';
 import { createModelPicker } from './model-picker.js';
@@ -135,18 +135,33 @@ function rebuildAllProviderSelectors() {
     rebuildOrchestratorModelPickers();
 }
 
+let _providerReleaseFocusTrap = null;
+
+function isProviderModalOpen() {
+    return elements.providerModal && !elements.providerModal.hidden && elements.providerModal.classList.contains('active');
+}
+
 function openProviderModal() {
     if (!elements.providerModal) return;
     elements.providerModal.hidden = false;
     elements.providerModal.classList.add('active');
     renderProviderModalList();
     resetProviderForm();
+    const content = elements.providerModal.querySelector('.modal-content') || elements.providerModal;
+    if (_providerReleaseFocusTrap) {
+        _providerReleaseFocusTrap();
+    }
+    _providerReleaseFocusTrap = activateFocusTrap(content);
 }
 
 function closeProviderModal() {
     if (!elements.providerModal) return;
     elements.providerModal.hidden = true;
     elements.providerModal.classList.remove('active');
+    if (_providerReleaseFocusTrap) {
+        _providerReleaseFocusTrap();
+        _providerReleaseFocusTrap = null;
+    }
 }
 
 function renderProviderModalList() {
@@ -757,6 +772,10 @@ function setupEventListeners() {
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            if (isProviderModalOpen()) {
+                closeProviderModal();
+                return;
+            }
             if (isImageToolsOpen()) {
                 closeImageTools();
                 return;
