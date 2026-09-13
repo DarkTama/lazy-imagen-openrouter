@@ -3,8 +3,24 @@
  */
 
 import { state, MODEL_CONFIGS, MODEL_PROMPT_CHAR_LIMITS, DEFAULT_PROMPT_CHAR_LIMIT, PROMPT_WARN_THRESHOLD, ATTRIBUTE_LABELS } from './state.js';
+import { getAllProviders, getProvidersByCapability } from './providers.js';
 import { elements } from './elements.js';
 import { escapeHtml, formatPrice, speedGlyph, sanitizeImageUrl, formatUsd } from './utils.js';
+
+export function renderGenerationProviderSelect() {
+    if (!elements.generationProviderSelect) return;
+    const current = state.generationProvider || state.provider || 'openrouter';
+    const providers = getProvidersByCapability('imageGen');
+
+    elements.generationProviderSelect.innerHTML = '';
+    providers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name || p.id;
+        if (p.id === current) opt.selected = true;
+        elements.generationProviderSelect.appendChild(opt);
+    });
+}
 
 export function renderModelInfoCard(modelId, target, meta) {
     if (!target) return;

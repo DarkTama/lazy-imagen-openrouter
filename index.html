@@ -142,11 +142,15 @@
 
             <!-- Provider -->
             <div class="config-section">
-                <h3>Provider</h3>
-                <div class="button-group provider-toggle" id="providerToggle">
-                    <button type="button" class="btn-toggle active" data-provider="openrouter">OpenRouter</button>
-                    <button type="button" class="btn-toggle" data-provider="nanogpt">NanoGPT</button>
+                <div class="section-title-row">
+                    <h3>Provider</h3>
+                    <button type="button" class="btn-icon-subtle" id="manageProvidersBtn" title="Manage Custom Providers" aria-label="Manage Custom Providers">
+                        ⚙️
+                    </button>
                 </div>
+                <select id="generationProviderSelect" class="text-input provider-select">
+                    <!-- Populated dynamically by JS -->
+                </select>
             </div>
 
             <!-- API Key -->
@@ -305,6 +309,12 @@
                     <div class="ow-details-body">
                         <textarea id="subjectContext" class="text-input" rows="3" placeholder="Describe anything the model might not know — character backstory, obscure product details, recent release, custom IP, distinctive visual traits…"></textarea>
                         <div class="research-model-row">
+                            <label for="researchProviderSelect">Provider:</label>
+                            <select id="researchProviderSelect" class="text-input research-provider-select">
+                                <!-- Populated from providers in orchestrator.js -->
+                            </select>
+                        </div>
+                        <div class="research-model-row">
                             <label for="researchModelSelect">Research with:</label>
                             <select id="researchModelSelect" class="text-input research-model-select">
                                 <!-- Populated from RESEARCH_MODELS in app.js -->
@@ -321,6 +331,13 @@
                         <span class="ow-details-chevron">▸</span>
                     </summary>
                     <div class="ow-details-body">
+                        <div class="ow-advanced-row">
+                            <label class="ow-advanced-label" for="visionProviderSelect">Vision Provider</label>
+                            <select id="visionProviderSelect" class="text-input ow-select">
+                                <!-- Populated from providers in orchestrator.js -->
+                            </select>
+                        </div>
+
                         <div class="ow-advanced-row">
                             <label class="ow-advanced-label">Vision Analyst Model</label>
                             <div class="custom-select rich" id="visionModelContainer">
@@ -613,6 +630,87 @@
                         <p class="hint">Auto-detect flood-fills from the image borders. Fix leftovers with the Keep/Remove brushes — <kbd>[</kbd> and <kbd>]</kbd> resize, <kbd>Ctrl+Z</kbd> undoes. With <strong>Smart select</strong> on, a click removes or restores the whole connected color region (uses the Tolerance slider).</p>
                     </div>
                 </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Provider Management Modal -->
+    <div class="modal" id="providerModal" hidden>
+        <div class="modal-overlay" id="providerModalOverlay"></div>
+        <div class="modal-dialog provider-modal-dialog">
+            <div class="modal-header">
+                <h2 class="modal-title">Provider Management</h2>
+                <button type="button" class="btn-close" id="providerModalClose" aria-label="Close provider modal">&times;</button>
+            </div>
+            <div class="modal-body provider-modal-body">
+                <div class="provider-modal-left">
+                    <div class="provider-modal-list-header">
+                        <h3>Configured Providers</h3>
+                        <button type="button" class="btn btn-ghost-sm" id="providerAddNewBtn">+ Add Custom</button>
+                    </div>
+                    <div class="provider-list" id="providerModalList">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+                <div class="provider-modal-right">
+                    <form id="providerEditForm" class="provider-form">
+                        <input type="hidden" id="providerFormId">
+                        <h3 id="providerFormTitle">Add Custom Provider</h3>
+                        
+                        <div class="form-group">
+                            <label for="providerFormName">Provider Name</label>
+                            <input type="text" id="providerFormName" class="text-input" placeholder="e.g. Local Ollama, DeepSeek" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="providerFormBase">Base URL</label>
+                            <input type="url" id="providerFormBase" class="text-input" placeholder="http://localhost:11434/v1" required>
+                            <small class="hint">Standard OpenAI-compatible base URL ending in /v1</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="providerFormKey">API Key <span class="hint-inline">(optional for local servers)</span></label>
+                            <input type="password" id="providerFormKey" class="text-input" placeholder="sk-...">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Capabilities</label>
+                            <div class="provider-checkbox-grid">
+                                <label class="checkbox-row">
+                                    <input type="checkbox" id="providerCapImage" checked>
+                                    <span>Image Generation</span>
+                                </label>
+                                <label class="checkbox-row">
+                                    <input type="checkbox" id="providerCapChat" checked>
+                                    <span>Chat / Vision / Analysis</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="providerFormStrategy">Image API Format</label>
+                            <select id="providerFormStrategy" class="text-input">
+                                <option value="images-endpoint">/v1/images/generations (Standard OpenAI)</option>
+                                <option value="chat-modalities">/v1/chat/completions with modalities (OpenRouter style)</option>
+                            </select>
+                        </div>
+
+                        <div class="cors-notice" id="providerCorsNotice">
+                            <strong>Local Server CORS Tip:</strong>
+                            <p>If connecting to Ollama, start it with CORS allowed:</p>
+                            <code>OLLAMA_ORIGINS="*" ollama serve</code>
+                        </div>
+
+                        <div class="provider-form-actions">
+                            <button type="button" class="btn btn-ghost" id="providerTestBtn">Test Connection</button>
+                            <span class="provider-test-status" id="providerTestStatus"></span>
+                            <div class="provider-form-right-btns">
+                                <button type="button" class="btn btn-ghost" id="providerDeleteBtn" hidden>Delete</button>
+                                <button type="submit" class="btn btn-primary" id="providerSaveBtn">Save Provider</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

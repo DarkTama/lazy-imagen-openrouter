@@ -4163,3 +4163,212 @@ body.orchestrator-active #promptInput::after {
         white-space: nowrap;
     }
 }
+
+/* ===== Custom Provider Management Modal & Selectors ===== */
+.section-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.section-title-row h3 {
+    margin-bottom: 0;
+}
+
+.btn-icon-subtle {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.btn-icon-subtle:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.provider-select {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.provider-modal-dialog {
+    max-width: 800px;
+    width: 90vw;
+}
+
+.provider-modal-body {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
+    min-height: 420px;
+    padding: 16px 24px 24px 24px;
+}
+
+.provider-modal-left {
+    border-right: 1px solid var(--border-color);
+    padding-right: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.provider-modal-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.provider-modal-list-header h3 {
+    font-size: 0.95rem;
+    margin: 0;
+    font-weight: 600;
+}
+
+.provider-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    max-height: 380px;
+}
+
+.provider-card-item {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s;
+}
+
+.provider-card-item:hover {
+    border-color: var(--accent-primary);
+}
+
+.provider-card-item.active {
+    border-color: var(--accent-primary);
+    background: var(--bg-tertiary);
+}
+
+.provider-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.provider-card-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.provider-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--border-color);
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.provider-badge.built-in {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.provider-badge.custom {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.provider-card-url {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.provider-modal-right {
+    display: flex;
+    flex-direction: column;
+}
+
+.provider-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.provider-checkbox-grid {
+    display: flex;
+    gap: 16px;
+    margin-top: 6px;
+}
+
+.cors-notice {
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--accent-primary);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.cors-notice code {
+    display: block;
+    margin-top: 6px;
+    background: var(--bg-primary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.75rem;
+}
+
+.provider-form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    gap: 12px;
+}
+
+.provider-form-right-btns {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.provider-test-status {
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.provider-test-status.success {
+    color: #10b981;
+}
+
+.provider-test-status.error {
+    color: #ef4444;
+}
+
+@media (max-width: 700px) {
+    .provider-modal-body {
+        grid-template-columns: 1fr;
+    }
+    .provider-modal-left {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding-right: 0;
+        padding-bottom: 16px;
+    }
+}

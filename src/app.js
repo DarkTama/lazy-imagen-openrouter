@@ -6,10 +6,10 @@
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider } from './state.js';
-import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
-import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency } from './api.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider } from './providers.js';
+import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
-import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal } from './ui.js';
+import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal, renderGenerationProviderSelect } from './ui.js';
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
 import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl, rebuildOrchestratorModelPickers } from './orchestrator.js';
 import { createModelPicker } from './model-picker.js';
@@ -130,6 +130,90 @@ function rebuildGenerationModelOptions(providerId) {
     }
 }
 
+function rebuildAllProviderSelectors() {
+    renderGenerationProviderSelect();
+    rebuildOrchestratorModelPickers();
+}
+
+function openProviderModal() {
+    if (!elements.providerModal) return;
+    elements.providerModal.hidden = false;
+    renderProviderModalList();
+    resetProviderForm();
+}
+
+function closeProviderModal() {
+    if (!elements.providerModal) return;
+    elements.providerModal.hidden = true;
+}
+
+function renderProviderModalList() {
+    if (!elements.providerModalList) return;
+    elements.providerModalList.innerHTML = '';
+    const all = getAllProviders();
+    const activeGen = state.generationProvider || state.provider || 'openrouter';
+
+    all.forEach(p => {
+        const item = document.createElement('div');
+        item.className = `provider-card-item ${p.id === activeGen ? 'active' : ''}`;
+        const isBuiltIn = isBuiltInProvider(p.id);
+        item.innerHTML = `
+            <div class="provider-card-top">
+                <span class="provider-card-name">${escapeHtml(p.name || p.id)}</span>
+                <span class="provider-badge ${isBuiltIn ? 'built-in' : 'custom'}">${isBuiltIn ? 'Built-in' : 'Custom'}</span>
+            </div>
+            <div class="provider-card-url">${escapeHtml(p.base || '')}</div>
+        `;
+        item.addEventListener('click', () => {
+            selectProviderInModal(p);
+        });
+        elements.providerModalList.appendChild(item);
+    });
+}
+
+function selectProviderInModal(prov) {
+    if (!elements.providerEditForm) return;
+    const isBuiltIn = isBuiltInProvider(prov.id);
+    elements.providerFormId.value = prov.id;
+    elements.providerFormTitle.textContent = isBuiltIn ? `View Provider (${prov.name})` : 'Edit Custom Provider';
+    elements.providerFormName.value = prov.name || prov.id;
+    elements.providerFormName.disabled = isBuiltIn;
+    elements.providerFormBase.value = prov.base || '';
+    elements.providerFormBase.disabled = isBuiltIn;
+    elements.providerFormKey.value = loadApiKeyForProvider(prov.id) || '';
+    elements.providerCapImage.checked = !!prov.capabilities?.imageGen;
+    elements.providerCapImage.disabled = isBuiltIn;
+    elements.providerCapChat.checked = !!prov.capabilities?.chatVision;
+    elements.providerCapChat.disabled = isBuiltIn;
+    elements.providerFormStrategy.value = prov.imageStrategy || 'images-endpoint';
+    elements.providerFormStrategy.disabled = isBuiltIn;
+    elements.providerDeleteBtn.hidden = isBuiltIn;
+    elements.providerSaveBtn.hidden = isBuiltIn;
+    elements.providerTestStatus.textContent = '';
+    elements.providerTestStatus.className = 'provider-test-status';
+}
+
+function resetProviderForm() {
+    if (!elements.providerEditForm) return;
+    elements.providerFormId.value = '';
+    elements.providerFormTitle.textContent = 'Add Custom Provider';
+    elements.providerFormName.value = '';
+    elements.providerFormName.disabled = false;
+    elements.providerFormBase.value = '';
+    elements.providerFormBase.disabled = false;
+    elements.providerFormKey.value = '';
+    elements.providerCapImage.checked = true;
+    elements.providerCapImage.disabled = false;
+    elements.providerCapChat.checked = true;
+    elements.providerCapChat.disabled = false;
+    elements.providerFormStrategy.value = 'images-endpoint';
+    elements.providerFormStrategy.disabled = false;
+    elements.providerDeleteBtn.hidden = true;
+    elements.providerSaveBtn.hidden = false;
+    elements.providerTestStatus.textContent = '';
+    elements.providerTestStatus.className = 'provider-test-status';
+}
+
 /**
  * Switch the active provider: persist the change, reload the key/model,
  * rebuild the picker, and update all UI that depends on the provider.
@@ -191,6 +275,7 @@ async function init() {
 
     // Init provider toggle active state + key field label/placeholder
     applyProviderUI(state.provider);
+    rebuildAllProviderSelectors();
 
     elements.apiKey.value = state.apiKey;
     elements.rememberKeyToggle.checked = state.rememberKey;
@@ -461,6 +546,120 @@ function setupEventListeners() {
             btn.textContent = 'Refresh model list';
         }
     });
+
+    // Provider Management Modal
+    if (elements.manageProvidersBtn) {
+        elements.manageProvidersBtn.addEventListener('click', openProviderModal);
+    }
+    if (elements.providerModalClose) {
+        elements.providerModalClose.addEventListener('click', closeProviderModal);
+    }
+    if (elements.providerModalOverlay) {
+        elements.providerModalOverlay.addEventListener('click', closeProviderModal);
+    }
+    if (elements.providerAddNewBtn) {
+        elements.providerAddNewBtn.addEventListener('click', resetProviderForm);
+    }
+
+    if (elements.generationProviderSelect) {
+        elements.generationProviderSelect.addEventListener('change', (e) => {
+            const chosen = e.target.value;
+            state.generationProvider = chosen;
+            switchProvider(chosen);
+        });
+    }
+
+    if (elements.providerEditForm) {
+        elements.providerEditForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = elements.providerFormId.value || undefined;
+            const name = elements.providerFormName.value.trim();
+            const base = elements.providerFormBase.value.trim();
+            const apiKey = elements.providerFormKey.value.trim();
+            const imageGen = elements.providerCapImage.checked;
+            const chatVision = elements.providerCapChat.checked;
+            const strategy = elements.providerFormStrategy.value;
+
+            if (!name || !base) {
+                showToast('Please enter provider name and base URL', 'error');
+                return;
+            }
+
+            const saved = saveCustomProvider({
+                id,
+                name,
+                base,
+                capabilities: { imageGen, chatVision },
+                imageStrategy: strategy
+            });
+
+            if (apiKey) {
+                localStorage.setItem(`imagen_api_key_${saved.id}`, apiKey);
+            }
+
+            showToast(`Provider "${saved.name}" saved`, 'success');
+            renderProviderModalList();
+            rebuildAllProviderSelectors();
+            selectProviderInModal(saved);
+        });
+    }
+
+    if (elements.providerDeleteBtn) {
+        elements.providerDeleteBtn.addEventListener('click', () => {
+            const id = elements.providerFormId.value;
+            if (!id || isBuiltInProvider(id)) return;
+            if (confirm('Delete this provider?')) {
+                deleteCustomProvider(id);
+                showToast('Provider deleted', 'success');
+                if (state.generationProvider === id) state.generationProvider = 'openrouter';
+                if (state.orchestrator.visionProvider === id) state.orchestrator.visionProvider = 'openrouter';
+                if (state.orchestrator.researchProvider === id) state.orchestrator.researchProvider = 'openrouter';
+                resetProviderForm();
+                renderProviderModalList();
+                rebuildAllProviderSelectors();
+            }
+        });
+    }
+
+    if (elements.providerTestBtn) {
+        elements.providerTestBtn.addEventListener('click', async () => {
+            const id = elements.providerFormId.value;
+            const base = elements.providerFormBase.value.trim();
+            const key = elements.providerFormKey.value.trim();
+
+            elements.providerTestStatus.className = 'provider-test-status';
+            elements.providerTestStatus.textContent = 'Testing…';
+
+            // If it's an existing saved provider:
+            if (id) {
+                if (key) localStorage.setItem(`imagen_api_key_${id}`, key);
+                const res = await testProviderConnection(id);
+                if (res.ok) {
+                    elements.providerTestStatus.className = 'provider-test-status success';
+                    elements.providerTestStatus.textContent = 'Connection successful!';
+                } else {
+                    elements.providerTestStatus.className = 'provider-test-status error';
+                    elements.providerTestStatus.textContent = res.error || 'Connection failed';
+                }
+            } else {
+                // Ad-hoc test before saving
+                try {
+                    const headers = key ? { 'Authorization': `Bearer ${key}` } : {};
+                    const resp = await fetch(`${base}/models`, { headers });
+                    if (resp.ok) {
+                        elements.providerTestStatus.className = 'provider-test-status success';
+                        elements.providerTestStatus.textContent = 'Endpoint reachable!';
+                    } else {
+                        elements.providerTestStatus.className = 'provider-test-status error';
+                        elements.providerTestStatus.textContent = `HTTP ${resp.status}`;
+                    }
+                } catch (e) {
+                    elements.providerTestStatus.className = 'provider-test-status error';
+                    elements.providerTestStatus.textContent = e.message || 'Connection failed (CORS?)';
+                }
+            }
+        });
+    }
 
     elements.clearReferences.addEventListener('click', clearAllReferences);
 

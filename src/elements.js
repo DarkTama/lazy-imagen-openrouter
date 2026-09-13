@@ -7,9 +7,31 @@ export const elements = {};
 
 export function initElements() {
     // Sidebar — Provider
+    elements.generationProviderSelect = document.getElementById('generationProviderSelect');
+    elements.manageProvidersBtn = document.getElementById('manageProvidersBtn');
     elements.providerToggle = document.getElementById('providerToggle');
     elements.apiKeyLabel = document.getElementById('apiKeyLabel');
     elements.apiKeyNote = document.getElementById('apiKeyNote');
+
+    // Provider Modal
+    elements.providerModal = document.getElementById('providerModal');
+    elements.providerModalOverlay = document.getElementById('providerModalOverlay');
+    elements.providerModalClose = document.getElementById('providerModalClose');
+    elements.providerModalList = document.getElementById('providerModalList');
+    elements.providerAddNewBtn = document.getElementById('providerAddNewBtn');
+    elements.providerEditForm = document.getElementById('providerEditForm');
+    elements.providerFormId = document.getElementById('providerFormId');
+    elements.providerFormTitle = document.getElementById('providerFormTitle');
+    elements.providerFormName = document.getElementById('providerFormName');
+    elements.providerFormBase = document.getElementById('providerFormBase');
+    elements.providerFormKey = document.getElementById('providerFormKey');
+    elements.providerCapImage = document.getElementById('providerCapImage');
+    elements.providerCapChat = document.getElementById('providerCapChat');
+    elements.providerFormStrategy = document.getElementById('providerFormStrategy');
+    elements.providerTestBtn = document.getElementById('providerTestBtn');
+    elements.providerTestStatus = document.getElementById('providerTestStatus');
+    elements.providerDeleteBtn = document.getElementById('providerDeleteBtn');
+    elements.providerSaveBtn = document.getElementById('providerSaveBtn');
 
     // Sidebar
     elements.modelSelectContainer = document.getElementById('modelSelectContainer');
