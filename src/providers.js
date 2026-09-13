@@ -178,6 +178,10 @@ export function getProvider(providerId) {
     return custom.find(p => p.id === providerId) || null;
 }
 
+export function isBuiltInProvider(id) {
+    return Boolean(BUILTIN_PROVIDERS[id]);
+}
+
 export function getProvidersByCapability(capability) {
     const all = getAllProviders();
     return all.filter(p => p.capabilities && p.capabilities[capability] === true);
