@@ -19,9 +19,16 @@ export function loadRememberKeyForProvider(providerId) {
     return localStorage.getItem(`imagen_remember_key_${providerId}`) === 'true';
 }
 
-export function loadSelectedModelForProvider(providerId) {
-    const stored = localStorage.getItem(`imagen_model_${providerId}`);
+export function loadSelectedModelForProvider(providerId, role = 'image') {
+    const key = role === 'vision'
+        ? `imagen_vision_model_${providerId}`
+        : role === 'research'
+            ? `imagen_research_model_${providerId}`
+            : `imagen_model_${providerId}`;
+    const stored = localStorage.getItem(key);
     if (stored) return stored;
+    if (role === 'vision') return providerId === 'nanogpt' ? '' : 'google/gemini-2.5-flash';
+    if (role === 'research') return 'perplexity/sonar';
     return providerId === 'nanogpt' ? 'step-image-edit-2' : 'google/gemini-2.5-flash-image';
 }
 
@@ -40,10 +47,14 @@ function migrateStorageKeys() {
     if (legacyRemember !== null && !localStorage.getItem('imagen_remember_key_openrouter')) {
         localStorage.setItem('imagen_remember_key_openrouter', legacyRemember);
     }
+    const legacyProvider = localStorage.getItem('imagen_provider');
+    if (legacyProvider && !localStorage.getItem('imagen_generation_provider')) {
+        localStorage.setItem('imagen_generation_provider', legacyProvider);
+    }
 }
 migrateStorageKeys();
 
-const _activeProvider = localStorage.getItem('imagen_provider') || 'openrouter';
+const _activeGenerationProvider = localStorage.getItem('imagen_generation_provider') || localStorage.getItem('imagen_provider') || 'openrouter';
 
 // ===== Orchestrator Defaults =====
 export const ORCHESTRATOR_DEFAULTS = {
@@ -58,8 +69,10 @@ export const ORCHESTRATOR_DEFAULTS = {
     artStyle: 'source',      // 'source' | 'reference' | 'blend'
     identityLock: 'high',    // 'low' | 'medium' | 'high' | 'max'
     creativity: 25,          // 0-100
+    visionProvider: 'openrouter',
     visionModel: 'google/gemini-2.5-flash',
     visionModelCustom: '',   // overrides visionModel if non-empty
+    researchProvider: 'openrouter',
     researchModel: 'perplexity/sonar',
     subjectContext: '',
     notes: '',
@@ -294,10 +307,16 @@ export function loadOrchestratorState() {
 
 // ===== Application State =====
 export const state = {
-    provider: _activeProvider,
-    apiKey: loadApiKeyForProvider(_activeProvider),
-    rememberKey: loadRememberKeyForProvider(_activeProvider),
-    selectedModel: loadSelectedModelForProvider(_activeProvider),
+    generationProvider: _activeGenerationProvider,
+    get provider() {
+        return this.generationProvider;
+    },
+    set provider(val) {
+        this.generationProvider = val;
+    },
+    apiKey: loadApiKeyForProvider(_activeGenerationProvider),
+    rememberKey: loadRememberKeyForProvider(_activeGenerationProvider),
+    selectedModel: loadSelectedModelForProvider(_activeGenerationProvider),
     imageSize: localStorage.getItem('imagen_size') || '1024x1024',
     imageQuality: localStorage.getItem('imagen_quality') || '1K',
     aspectRatio: localStorage.getItem('imagen_aspect_ratio') || '1:1',
