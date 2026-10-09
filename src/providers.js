@@ -283,3 +283,38 @@ export function deleteCustomProvider(id) {
     localStorage.setItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify(toStore));
     return true;
 }
+
+/** Pure: form field values for a clicked template. Key is always empty. */
+export function templateFormValues(templateId) {
+    const t = getProviderTemplate(templateId);
+    if (!t) return null;
+    return {
+        name: t.name,
+        base: t.base,
+        imageStrategy: t.imageStrategy,
+        capImage: !!t.capabilities?.imageGen,
+        capChat: !!t.capabilities?.chatVision,
+        key: '',
+        notice: t.notice || ''
+    };
+}
+
+/** Pure: config for saveCustomProvider. Form fields win; extras from template (create) or existing provider (edit). */
+export function mergeTemplateIntoSave(formValues, pendingTemplate, existingProvider) {
+    const src = pendingTemplate || existingProvider || null;
+    const extras = src ? {
+        imageConfigStyle: src.imageConfigStyle,
+        supportsAspectRatio: src.supportsAspectRatio,
+        knownModels: src.knownModels,
+        defaultVisionModel: src.defaultVisionModel,
+        defaultModel: src.defaultModel
+    } : {};
+    return {
+        ...extras,
+        id: formValues.id,
+        name: formValues.name,
+        base: formValues.base,
+        capabilities: { imageGen: !!formValues.capImage, chatVision: !!formValues.capChat },
+        imageStrategy: formValues.imageStrategy
+    };
+}

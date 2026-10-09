@@ -6,7 +6,7 @@
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
-import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate } from './providers.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate, templateFormValues, mergeTemplateIntoSave } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
 import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal, renderGenerationProviderSelect, activateFocusTrap, applyAspectSupport } from './ui.js';
@@ -218,13 +218,14 @@ function applyProviderTemplate(key) {
     if (!t || !elements.providerEditForm) return;
     resetProviderForm();
     _pendingTemplate = t;
-    elements.providerFormName.value = t.name;
-    elements.providerFormBase.value = t.base;
-    elements.providerFormKey.value = '';
-    elements.providerCapImage.checked = !!t.capabilities.imageGen;
-    elements.providerCapChat.checked = !!t.capabilities.chatVision;
-    elements.providerFormStrategy.value = t.imageStrategy;
-    showTemplateNotice(t.notice);
+    const v = templateFormValues(key);
+    elements.providerFormName.value = v.name;
+    elements.providerFormBase.value = v.base;
+    elements.providerFormKey.value = v.key;
+    elements.providerCapImage.checked = v.capImage;
+    elements.providerCapChat.checked = v.capChat;
+    elements.providerFormStrategy.value = v.imageStrategy;
+    showTemplateNotice(v.notice);
 }
 
 function selectProviderInModal(prov) {
@@ -664,24 +665,11 @@ function setupEventListeners() {
                 return;
             }
 
-            // Preserve non-form fields: from pending template, else from the existing provider on edit.
-            const extraSrc = _pendingTemplate || (id ? getProvider(id) : null);
-            const extras = extraSrc ? {
-                imageConfigStyle: extraSrc.imageConfigStyle,
-                supportsAspectRatio: extraSrc.supportsAspectRatio,
-                knownModels: extraSrc.knownModels,
-                defaultVisionModel: extraSrc.defaultVisionModel,
-                defaultModel: extraSrc.defaultModel
-            } : {};
-
-            const saved = saveCustomProvider({
-                ...extras,
-                id,
-                name,
-                base,
-                capabilities: { imageGen, chatVision },
-                imageStrategy: strategy
-            });
+            const saved = saveCustomProvider(mergeTemplateIntoSave(
+                { id, name, base, imageStrategy: strategy, capImage: imageGen, capChat: chatVision },
+                _pendingTemplate,
+                id ? getProvider(id) : null
+            ));
 
             if (apiKey) {
                 localStorage.setItem(`imagen_api_key_${saved.id}`, apiKey);

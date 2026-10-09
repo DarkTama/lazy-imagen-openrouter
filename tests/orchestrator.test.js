@@ -148,3 +148,18 @@ describe('orchestrator role provider configuration', () => {
   });
 });
 
+
+import { pickVisionModelForProvider } from '../src/orchestrator.js';
+describe('pickVisionModelForProvider', () => {
+    const prov = { defaultVisionModel: 'def', knownModels: [{ id: 'a', kind: 'vision' }, { id: 'img', kind: 'image' }] };
+    it('keeps current when in known', () => expect(pickVisionModelForProvider(prov, 'a', [])).toBe('a'));
+    it('keeps current when in fetched', () => expect(pickVisionModelForProvider(prov, 'f', [{ id: 'f' }])).toBe('f'));
+    it('switches to default otherwise (image-kind does not count)', () => {
+        expect(pickVisionModelForProvider(prov, 'zzz', undefined)).toBe('def');
+        expect(pickVisionModelForProvider(prov, 'img', [])).toBe('def');
+    });
+    it('no defaultVisionModel keeps current', () => {
+        expect(pickVisionModelForProvider({ knownModels: [] }, 'zzz', [])).toBe('zzz');
+        expect(pickVisionModelForProvider(null, 'zzz', [])).toBe('zzz');
+    });
+});

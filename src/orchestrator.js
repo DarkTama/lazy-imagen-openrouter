@@ -11,6 +11,16 @@ import { escapeHtml, sanitizeImageUrl, debounce, showToast, formatPrice, speedGl
 import { ApiError, runVisionAnalysis, researchSubject, fetchChatModels } from './api.js';
 import { isMobileLayout, renderModelInfoCard } from './ui.js';
 
+/** Pure: keep current vision model if provider knows it, else provider default (if any). */
+export function pickVisionModelForProvider(prov, currentModelId, fetchedVisionModels) {
+    if (!prov?.defaultVisionModel) return currentModelId;
+    const known = [
+        ...(prov.knownModels || []).filter(m => !m.kind || m.kind === 'vision'),
+        ...(fetchedVisionModels || [])
+    ];
+    return known.some(m => m.id === currentModelId) ? currentModelId : prov.defaultVisionModel;
+}
+
 let _visionPicker = null;
 
 export function renderOrchestratorProviderSelectors() {
@@ -905,13 +915,7 @@ export function setupOrchestratorEventListeners(generateImages) {
         elements.visionProviderSelect.addEventListener('change', () => {
             o.visionProvider = elements.visionProviderSelect.value;
             const vp = getProvider(o.visionProvider);
-            if (vp?.defaultVisionModel) {
-                const known = [
-                    ...(vp.knownModels || []).filter(m => !m.kind || m.kind === 'vision'),
-                    ...(state.fetchedModels[o.visionProvider]?.vision || [])
-                ];
-                if (!known.some(m => m.id === o.visionModel)) o.visionModel = vp.defaultVisionModel;
-            }
+            o.visionModel = pickVisionModelForProvider(vp, o.visionModel, state.fetchedModels[o.visionProvider]?.vision);
             saveOrchestratorState();
             rebuildOrchestratorModelPickers();
         });

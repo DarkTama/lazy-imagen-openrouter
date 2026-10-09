@@ -1,11 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     getAllProviders,
     getProvider,
     getProvidersByCapability,
     saveCustomProvider,
     deleteCustomProvider,
-    CUSTOM_PROVIDERS_STORAGE_KEY
+    CUSTOM_PROVIDERS_STORAGE_KEY,
+    PROVIDER_TEMPLATES,
+    getProviderTemplate,
+    templateFormValues,
+    mergeTemplateIntoSave
 } from '../src/providers.js';
 
 describe('providers registry', () => {
@@ -90,11 +94,6 @@ describe('custom provider image capabilities', () => {
     });
 });
 
-import { PROVIDER_TEMPLATES, getProviderTemplate } from '../src/providers.js';
-import { vi, afterEach } from 'vitest';
-import { applyAspectSupport } from '../src/ui.js';
-import { state } from '../src/state.js';
-
 describe('NineGuard template', () => {
     beforeEach(() => localStorage.clear());
     afterEach(() => vi.unstubAllEnvs());
@@ -129,23 +128,54 @@ describe('NineGuard template', () => {
     });
 });
 
-describe('applyAspectSupport', () => {
-    beforeEach(() => {
-        document.body.innerHTML = `<button class="btn-aspect active" data-ratio="1:1"></button><button class="btn-aspect" data-ratio="16:9"></button><small id="aspectRatioHint" hidden></small>`;
-        state.aspectRatio = '16:9';
+describe('template form flow', () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it('templateFormValues(nineguard): fields, empty key, notice', () => {
+        vi.stubEnv('DEV', true);
+        const v = templateFormValues('nineguard');
+        expect(v).toEqual({
+            name: 'NineGuard', base: `${location.origin}/nineguard/v1`, imageStrategy: 'chat-modalities',
+            capImage: true, capChat: true, key: '', notice: PROVIDER_TEMPLATES.nineguard.notice
+        });
+        expect(templateFormValues('nope')).toBeNull();
     });
 
-    it('locks to 1:1 when unsupported', () => {
-        expect(applyAspectSupport({ supportsAspectRatio: false })).toBe(true);
-        expect([...document.querySelectorAll('.btn-aspect')].every(b => b.disabled)).toBe(true);
-        expect(state.aspectRatio).toBe('1:1');
-        expect(document.getElementById('aspectRatioHint').hidden).toBe(false);
+    it('non-DEV base is empty and HTML input is required', async () => {
+        vi.stubEnv('DEV', false);
+        expect(templateFormValues('nineguard').base).toBe('');
+        const fs = await import('node:fs');
+        const html = fs.readFileSync('index.html', 'utf-8');
+        expect(html).toMatch(/<input[^>]*id="providerFormBase"[^>]*\brequired\b/);
     });
 
-    it('re-enables when supported', () => {
-        applyAspectSupport({ supportsAspectRatio: false });
-        applyAspectSupport({ supportsAspectRatio: true });
-        expect([...document.querySelectorAll('.btn-aspect')].some(b => b.disabled)).toBe(false);
-        expect(document.getElementById('aspectRatioHint').hidden).toBe(true);
+    const form = { id: undefined, name: 'My NG', base: 'https://x.invalid/v1', imageStrategy: 'images-endpoint', capImage: false, capChat: true };
+
+    it('merge on create takes extras from template; form fields win', () => {
+        const t = getProviderTemplate('nineguard');
+        const c = mergeTemplateIntoSave(form, t, null);
+        expect(c.knownModels).toEqual(t.knownModels);
+        expect(c.supportsAspectRatio).toBe(false);
+        expect(c.imageConfigStyle).toBe('none');
+        expect(c.defaultVisionModel).toBe(t.defaultVisionModel);
+        expect(c.name).toBe('My NG');
+        expect(c.base).toBe('https://x.invalid/v1');
+        expect(c.imageStrategy).toBe('images-endpoint');
+        expect(c.capabilities).toEqual({ imageGen: false, chatVision: true });
+    });
+
+    it('merge on edit takes extras from existing provider', () => {
+        const existing = { knownModels: [{ id: 'm', kind: 'vision' }], supportsAspectRatio: false, imageConfigStyle: 'none', defaultVisionModel: 'm' };
+        const c = mergeTemplateIntoSave({ ...form, id: 'p1' }, null, existing);
+        expect(c.id).toBe('p1');
+        expect(c.knownModels).toEqual(existing.knownModels);
+        expect(c.supportsAspectRatio).toBe(false);
+        expect(c.imageConfigStyle).toBe('none');
+        expect(c.defaultVisionModel).toBe('m');
+        expect(c.name).toBe('My NG');
+    });
+
+    it('merge with no source yields no extras', () => {
+        expect(mergeTemplateIntoSave(form, null, null).knownModels).toBeUndefined();
     });
 });

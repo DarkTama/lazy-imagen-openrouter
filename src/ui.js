@@ -287,14 +287,12 @@ export function closeModal() {
  */
 export function applyAspectSupport(prov) {
     const locked = !!prov && prov.supportsAspectRatio === false;
+    // Locking never persists; saved user ratio is restored on unlock.
+    state.aspectRatio = locked ? '1:1' : (localStorage.getItem('imagen_aspect_ratio') || '1:1');
     document.querySelectorAll('.btn-aspect').forEach(b => {
         b.disabled = locked;
-        if (locked) b.classList.toggle('active', b.dataset.ratio === '1:1');
+        b.classList.toggle('active', b.dataset.ratio === state.aspectRatio);
     });
-    if (locked && state.aspectRatio !== '1:1') {
-        state.aspectRatio = '1:1';
-        localStorage.setItem('imagen_aspect_ratio', '1:1');
-    }
     const hint = document.getElementById('aspectRatioHint');
     if (hint) hint.hidden = !locked;
     return locked;
