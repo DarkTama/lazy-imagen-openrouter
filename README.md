@@ -162,6 +162,8 @@ Manual prompt mode skips the vision call — only the image generation is charge
 
 OpenRouter image models (Gemini Image, GPT-5 Image) have moderate-to-strict content policies.
 
+The Vision Analyst describes outfits as **garments** — type, cut, neckline, sleeves, length, material, color, trim — rather than describing the body underneath. This keeps the assembled prompt about the costume and avoids needless refusals on ordinary character art. The app does **not** rewrite prompts to slip past moderation; if a provider refuses, the refusal is shown as-is.
+
 If the **vision step** refuses — "undefined" prompt or "Vision response was not valid JSON" — switch the Vision Analyst Model to **Qwen2.5-VL 72B** or **Llama 3.2 90B Vision**.
 
 If the **image generation step** refuses on OpenRouter, try a different model or simplify the prompt. NanoGPT's models (Step Edit 2, Qwen Image, etc.) may have different thresholds.
@@ -269,7 +271,9 @@ The subject context is prepended to the assembled prompt as a grounding statemen
 
 Click **Generate**. You'll see the button label change to **Analyzing images…** while the vision call runs, then the assembled prompt appears in the **Assembled prompt preview**. The actual image generation starts immediately after. The **readiness chips** in the footer show beforehand whether anything is missing (images, API key, image-capable model).
 
-**Re-assembling is free:** the vision analysis of your image pair is cached. If you change toggles, style, identity lock, creativity or notes afterwards, a *"settings changed — re-assemble (free)"* badge appears — clicking Assemble then rebuilds the prompt instantly with **zero tokens spent**. Only changing an image or the vision analyst triggers a new paid analysis (the **Re-analyze** button forces one manually).
+**Re-assembling is free:** the vision analysis of your image pair is cached. If you change toggles, style, identity lock, creativity or notes afterwards, a *"settings changed — re-assemble (free)"* badge appears — clicking Assemble then rebuilds the prompt instantly with **zero tokens spent**. Only changing an image or the vision analyst triggers a new paid analysis (the **Re-analyze** button forces one manually). After an app update that changes how images are analysed, the first Assemble re-runs the analysis once.
+
+**Upload size:** images are downscaled to 1024px JPEG before they are sent to the Vision Analyst (generation still receives the full-size images). This shrinks the upload and speeds up the call; token cost depends on the provider — some bill a flat amount per image regardless of size.
 
 **Iterating:** open any generated image and click **Iterate: use as Source** to feed the result back in as the new Source for another pass.
 
@@ -313,6 +317,29 @@ Click the **⚙️ Manage Providers** button in the sidebar next to the Provider
    - `/v1/chat/completions` with modalities (e.g. OpenRouter style)
 7. Click **Test Connection** to verify reachability and `/models` response, then click **Save Provider**.
 
+Generation also has an **"Or paste a model ID…"** field under the model picker, for gateways whose `/models` list omits image models. It is saved per provider and overrides the picker while non-empty.
+
+Some gateways can't do everything: a provider can declare that it only outputs 1:1 images (aspect buttons are then disabled with a *1:1 only* hint) and which of its image models accept reference images. When Orchestrator Mode is on and the generation provider has no model that accepts reference images, you get a one-time warning that Source/Reference images will be ignored.
+
+### NineGuard (9router gateway)
+
+NineGuard is a key-issuing gateway in front of 9router. In **Manage Providers → + Add Custom**, click **Use NineGuard template** — it fills name, Base URL, image format and the known models. Paste your own NineGuard key; nothing is pre-filled for you.
+
+| Role | Status |
+| --- | --- |
+| Vision Analyst (`9router/ag/gemini-3.8-flash-low`, default) | ✅ works |
+| Text-to-image, normal mode (`9router/ag/gemini-3.1-flash-image`) | ✅ works, **1:1 only** (1024×1024) |
+| Orchestrator generation | ❌ NineGuard currently drops input images for image models — keep OpenRouter/NanoGPT as the generation provider and use NineGuard for the Vision Analyst |
+
+**Browser access needs the dev proxy.** NineGuard does not answer CORS preflight requests and is served over plain http, so a browser page can't call it directly (and the https GitHub Pages build never can). For local use:
+
+```bash
+cp .env.example .env.local      # then set NINEGUARD_TARGET=http://<host>:<port>
+npm run dev                     # or: npm run build && npm run preview
+```
+
+Vite proxies `/nineguard/*` to `NINEGUARD_TARGET`, and the template's Base URL (`<dev origin>/nineguard/v1`) points at that proxy. `.env.local` is git-ignored. Using NineGuard from the Pages build requires the gateway to answer `OPTIONS` without auth with `Access-Control-Allow-*` headers **and** to be served over https.
+
 ### Local Server CORS Configuration
 Because this web app runs locally in your browser, local servers must allow Cross-Origin Resource Sharing (CORS):
 - **Ollama**: start with `OLLAMA_ORIGINS="*" ollama serve` (or set the environment variable in your system).
@@ -327,7 +354,7 @@ Because this web app runs locally in your browser, local servers must allow Cros
 - The chosen model is rate-limited.
 The orchestrator falls back to whatever's in the textarea, so a previous assembled prompt may still generate something usable.
 
-**"Doesn't support image input"** — Orchestrator Mode requires a generation model that accepts reference images. On OpenRouter, switch to Gemini or GPT-5 Image. On NanoGPT, only **Step Image Edit 2** and **Qwen Image** support img2img — the picker automatically filters to these when Orchestrator mode is enabled.
+**"Doesn't support image input"** — Orchestrator Mode requires a generation model that accepts reference images. On OpenRouter, switch to Gemini or GPT-5 Image. On NanoGPT, only **Step Image Edit 2** and **Qwen Image** support img2img. With Orchestrator mode on, the picker filters to img2img models on every provider and switches away from a model that can't take reference images.
 
 **"Could not save orchestrator state — uploaded images may be too large"** — orchestrator settings live in `localStorage` (~5MB quota) while the Source/Reference images themselves persist in IndexedDB. If this appears, the settings snapshot failed but the current session still works fine; the images usually survive a refresh regardless.
 
