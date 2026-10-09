@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state, ORCHESTRATOR_DEFAULTS, loadApiKeyForProvider } from '../src/state.js';
+import { state, ORCHESTRATOR_DEFAULTS, loadApiKeyForProvider, getEffectiveGenerationModel, getGenerationModelConfig, loadCustomGenerationModel, saveCustomGenerationModel, MODEL_CONFIGS, resolveReuseModel } from '../src/state.js';
 
 describe('state role-based provider decoupling', () => {
     beforeEach(() => {
@@ -18,7 +18,6 @@ describe('state role-based provider decoupling', () => {
     });
 });
 
-import { getEffectiveGenerationModel, getGenerationModelConfig, loadCustomGenerationModel, saveCustomGenerationModel, MODEL_CONFIGS } from '../src/state.js';
 
 describe('custom generation model', () => {
     beforeEach(() => { localStorage.clear(); state.generationModelCustom = ''; });
@@ -44,5 +43,15 @@ describe('custom generation model', () => {
         saveCustomGenerationModel('a', '');
         expect(loadCustomGenerationModel('a')).toBe('');
         expect(localStorage.getItem('imagen_model_custom_a')).toBeNull();
+    });
+});
+
+describe('resolveReuseModel', () => {
+    it('known model selects it and clears custom', () => {
+        const id = Object.keys(MODEL_CONFIGS)[0];
+        expect(resolveReuseModel(id, MODEL_CONFIGS)).toEqual({ selectedModel: id, custom: '' });
+    });
+    it('unknown model becomes custom ID', () => {
+        expect(resolveReuseModel('foo/bar-xyz', MODEL_CONFIGS)).toEqual({ selectedModel: null, custom: 'foo/bar-xyz' });
     });
 });

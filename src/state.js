@@ -39,6 +39,14 @@ export function getGenerationModelConfig() {
     return MODEL_CONFIGS[id] || { name: id, supportsImageInput: false, supportsAspectRatio: true };
 }
 
+/** Gallery reuse: known picker model -> select it, clear custom; else use as custom ID. */
+export function resolveReuseModel(imageModel, modelConfigs) {
+    if (imageModel && Object.prototype.hasOwnProperty.call(modelConfigs, imageModel)) {
+        return { selectedModel: imageModel, custom: '' };
+    }
+    return { selectedModel: null, custom: imageModel || '' };
+}
+
 export function loadSelectedModelForProvider(providerId, role = 'image') {
     const key = role === 'vision'
         ? `imagen_vision_model_${providerId}`

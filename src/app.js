@@ -31,6 +31,10 @@ let _generationPicker = null;
  */
 const _warnedNoImg2img = new Set();
 
+function renderGenerationModelInfo() {
+    renderModelInfoCard(getEffectiveGenerationModel(), elements.generationModelInfo, getGenerationModelConfig());
+}
+
 function syncGenerationPickerConstraints() {
     if (!_generationPicker) return;
     const prov = getProvider(state.provider);
@@ -51,7 +55,7 @@ function syncGenerationPickerConstraints() {
         localStorage.setItem(`imagen_model_${state.provider}`, first.id);
         if (elements.modelSelectValue) elements.modelSelectValue.textContent = first.name || first.id;
         _generationPicker.syncSelected();
-        renderModelInfoCard(first.id, elements.generationModelInfo, MODEL_CONFIGS[first.id]);
+        renderGenerationModelInfo();
         renderCostEstimate();
         renderOrchestratorReadiness();
     }
@@ -266,7 +270,7 @@ function switchProvider(newProviderId) {
     applyProviderUI(newProviderId);
     rebuildGenerationModelOptions(newProviderId);
     updateGeminiOptionsVisibility();
-    renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+    renderGenerationModelInfo();
     renderCostEstimate();
     renderOrchestratorReadiness();
 
@@ -287,7 +291,7 @@ function switchProvider(newProviderId) {
             state.fetchedModels[newProviderId].image = models;
             rebuildGenerationModelOptions(newProviderId);
             syncGenerationPickerConstraints();
-            renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+            renderGenerationModelInfo();
             renderCostEstimate();
         });
     }
@@ -384,12 +388,12 @@ async function init() {
 
     updateGeminiOptionsVisibility();
 
-    renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+    renderGenerationModelInfo();
 
     renderCostEstimate();
 
     fetchModelPricing().then(() => {
-        renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+        renderGenerationModelInfo();
         renderVisionModelChip();
         renderCostEstimate();
     });
@@ -397,7 +401,7 @@ async function init() {
     fetchImageModels(state.provider).then(models => {
         state.fetchedModels[state.provider].image = models;
         rebuildGenerationModelOptions(state.provider);
-        renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+        renderGenerationModelInfo();
         renderCostEstimate();
     });
 

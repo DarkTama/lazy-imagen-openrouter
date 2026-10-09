@@ -2,7 +2,7 @@
  * Gallery rendering and image management.
  */
 
-import { state, MODEL_CONFIGS } from './state.js';
+import { state, MODEL_CONFIGS, resolveReuseModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
 import { elements } from './elements.js';
 import ImagenDB from './db.js';
 import { escapeHtml, sanitizeImageUrl, modeTagHtml, getImageExtension, showToast, copyImageToClipboard, debounce } from './utils.js';
@@ -586,8 +586,15 @@ export function recreateFromImage(image) {
 }
 
 function restoreGenerationSettings(image) {
-    state.selectedModel = image.model;
-    localStorage.setItem('imagen_model', state.selectedModel);
+    const reuse = resolveReuseModel(image.model, MODEL_CONFIGS);
+    if (reuse.selectedModel) {
+        state.selectedModel = reuse.selectedModel;
+        localStorage.setItem('imagen_model', state.selectedModel);
+        localStorage.setItem(`imagen_model_${state.provider}`, state.selectedModel);
+    }
+    state.generationModelCustom = reuse.custom;
+    saveCustomGenerationModel(state.provider, reuse.custom);
+    if (elements.generationModelCustom) elements.generationModelCustom.value = reuse.custom;
     const modelOption = document.querySelector(`#modelSelectOptions .custom-select-option[data-value="${image.model}"]`);
     if (modelOption) {
         document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
@@ -616,6 +623,6 @@ function restoreGenerationSettings(image) {
     // Update UI after state changes
     import('./ui.js').then(({ renderModelInfoCard, updateGeminiOptionsVisibility }) => {
         updateGeminiOptionsVisibility();
-        renderModelInfoCard(state.selectedModel, elements.generationModelInfo, MODEL_CONFIGS[state.selectedModel]);
+        renderModelInfoCard(getEffectiveGenerationModel(), elements.generationModelInfo, getGenerationModelConfig());
     });
 }
