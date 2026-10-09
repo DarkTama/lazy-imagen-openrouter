@@ -398,6 +398,36 @@ Imagen ships a web-app manifest and service worker:
 - Generation, pricing, and research still require network (they call OpenRouter).
 - Updates install automatically on the next load after a deploy.
 
+## 🖥️ Desktop app
+
+A native desktop build (Tauri v2) is available for Windows, macOS and Linux.
+
+**Download:** grab the installer for your OS from the repo's **Releases** page.
+
+**Unsigned builds:** installers are not code-signed yet, so the OS warns on first launch.
+- *Windows SmartScreen*: click **More info** → **Run anyway**.
+- *macOS Gatekeeper*: right-click the app → **Open** → **Open**; or System Settings → Privacy & Security → **Open Anyway**.
+- macOS builds use the runner's default architecture (not universal).
+
+**API keys:** stored in the OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). Linux needs a Secret Service provider such as `gnome-keyring`. Keys are never read back into the UI.
+
+**Networking:** the desktop app calls providers directly, so no CORS setup or proxy is needed. Use the real URL as Base URL, e.g. NineGuard = `http(s)://host:port/v1`. Plain `http://` sends your key and images unencrypted; prefer `https://` or localhost.
+
+**Build locally** (needs Node 22, Rust, and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)):
+
+```bash
+npm ci
+npm run tauri dev     # run with hot reload
+npm run tauri build   # produce installers in src-tauri/target/release/bundle
+```
+
+**Release process:**
+1. Bump `version` in `package.json` (single source of truth) and commit.
+2. Tag it: `git tag vX.Y.Z && git push origin vX.Y.Z` (tag must match `package.json`, otherwise CI fails).
+3. The *Release* workflow builds all three platforms into a **draft** GitHub Release; review it and publish.
+
+A manual run of the workflow (Actions → Release → Run workflow) only builds and uploads artifacts; it does not create a Release.
+
 ## 🔒 Privacy & Security
 
 This is a **100% client-side application**:
