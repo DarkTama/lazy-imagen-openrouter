@@ -1,6 +1,8 @@
 # Local-only documentation scratchpad (full user guide lives in README.md)
-docs/
-gemini-code-1778698681551.md
+docs/*
+# Tracked: design decisions and implementation plans
+!docs/adr/
+!docs/superpowers/
 
 # Local Claude Code tooling/config (machine-specific)
 .claude/
