@@ -11,7 +11,8 @@
   },
   "app": {
     "windows": [{ "label": "main", "title": "Lazy Imagen", "width": 1400, "height": 900, "minWidth": 900, "minHeight": 600 }],
-    "security": { "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob: data:; img-src 'self' data: blob: https: http:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost https: http: data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'", "capabilities": ["default"] }
+    "security": { "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob: data:; img-src 'self' data: blob: https: http:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost https: http: data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob: data:; img-src 'self' data: blob: https: http:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws://localhost:1420 ipc: http://ipc.localhost https: http: data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'", "capabilities": ["default"] }
   },
   "bundle": {
     "active": true,

@@ -32,3 +32,12 @@ describe('capabilities/default.json', () => {
             ['core:default', 'allow-key-set', 'allow-key-has', 'allow-key-remove', 'allow-provider-fetch'].sort());
     });
 });
+
+describe('tauri devCsp', () => {
+  it('extends csp only with the Vite HMR websocket', async () => {
+    const fs = await import('node:fs');
+    const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf-8'));
+    const { csp, devCsp } = conf.app.security;
+    expect(devCsp).toBe(csp.replace("connect-src 'self'", "connect-src 'self' ws://localhost:1420"));
+  });
+});
