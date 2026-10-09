@@ -1,11 +1,22 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // Pages deploys under https://<user>.github.io/lazy-imagen-openrouter/, so
 // Vite must emit asset URLs prefixed with that subpath. Without this, the
 // built dist/index.html would reference /assets/... which 404s on Pages.
 // Override locally with --base=/ for `vite preview` at the root.
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const proxy = env.NINEGUARD_TARGET
+    ? {
+        '/nineguard': {
+          target: env.NINEGUARD_TARGET,
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/nineguard/, ''),
+        },
+      }
+    : undefined;
+  return {
   root: '.',
   base: '/lazy-imagen-openrouter/',
   build: {
@@ -14,7 +25,9 @@ export default defineConfig({
   },
   server: {
     open: true,
+    ...(proxy && { proxy }),
   },
+  ...(proxy && { preview: { proxy } }),
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
@@ -43,6 +56,7 @@ export default defineConfig({
         // Precache the app shell; the gallery itself lives in IndexedDB so
         // previously generated images already work offline.
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        navigateFallbackDenylist: [/^\/nineguard/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -63,4 +77,5 @@ export default defineConfig({
       },
     }),
   ],
+  };
 });
