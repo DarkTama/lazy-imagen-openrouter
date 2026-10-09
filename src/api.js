@@ -5,7 +5,7 @@
 
 import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS, loadApiKeyForProvider } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
-import { looksLikeRefusal } from './utils.js';
+import { looksLikeRefusal, compressDataUri } from './utils.js';
 import { retryWithBackoff } from './retry.js';
 
 // Returns provider base URL and auth headers for a given or active provider.
@@ -71,7 +71,19 @@ For clothing and accessories fields, give a Garment Description: name the garmen
 
 Output strictly valid JSON. No prose around it. No code fences.`;
 
-export async function runVisionAnalysis(sourceB64, referenceB64, modelId, providerId = null) {
+export const VISION_MAX_DIM = 1024;
+export const VISION_JPEG_QUALITY = 0.8;
+
+export async function runVisionAnalysis(sourceB64, referenceB64, modelId, providerId = null, { compress = compressDataUri } = {}) {
+    const shrink = async (uri) => {
+        try {
+            return await compress(uri, VISION_MAX_DIM, VISION_JPEG_QUALITY);
+        } catch (err) {
+            console.warn('Vision image compression failed; sending original', err);
+            return uri;
+        }
+    };
+    const [srcImg, refImg] = await Promise.all([shrink(sourceB64), shrink(referenceB64)]);
     const targetProviderId = providerId || state.orchestrator?.visionProvider || 'openrouter';
     let response;
     try {
@@ -81,13 +93,14 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId, provid
             headers,
             body: JSON.stringify({
                 model: modelId,
+                stream: false,
                 messages: [
                     { role: 'system', content: VISION_SYSTEM_PROMPT },
                     {
                         role: 'user',
                         content: [
-                            { type: 'image_url', image_url: { url: sourceB64, detail: 'high' } },
-                            { type: 'image_url', image_url: { url: referenceB64, detail: 'high' } },
+                            { type: 'image_url', image_url: { url: srcImg, detail: 'auto' } },
+                            { type: 'image_url', image_url: { url: refImg, detail: 'auto' } },
                             { type: 'text', text: 'Analyze both images and return the JSON described in the system prompt.' }
                         ]
                     }
@@ -165,6 +178,7 @@ export async function researchSubject(subjectText, modelId, providerId = null) {
             headers,
             body: JSON.stringify({
                 model: modelId,
+                stream: false,
                 messages: [
                     {
                         role: 'system',
@@ -269,11 +283,12 @@ export async function runImageEdit(imageDataUri, instruction, modelId, { signal 
             headers,
             body: JSON.stringify({
                 model: modelId,
+                stream: false,
                 messages: [
                     {
                         role: 'user',
                         content: [
-                            { type: 'image_url', image_url: { url: imageDataUri, detail: 'high' } },
+                            { type: 'image_url', image_url: { url: imageDataUri, detail: 'auto' } },
                             { type: 'text', text: instruction }
                         ]
                     }
@@ -428,6 +443,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
 
     const requestBody = {
         model: state.selectedModel,
+        stream: false,
         messages: [
             {
                 role: 'user',

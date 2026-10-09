@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { classifyError } from '../src/orchestrator.js';
-import { extractImageFromMessage } from '../src/api.js';
+import { extractImageFromMessage, runVisionAnalysis } from '../src/api.js';
 
 describe('extractImageFromMessage', () => {
   it('reads message.images with image_url shape', () => {
@@ -211,5 +211,37 @@ describe('ANALYSIS_VERSION', () => {
     const { ANALYSIS_VERSION } = await import('../src/state.js');
     expect(typeof ANALYSIS_VERSION).toBe('string');
     expect(ANALYSIS_VERSION.length).toBeGreaterThan(0);
+  });
+});
+
+describe('runVisionAnalysis compression', () => {
+  const okJson = (x) => ({ ok: true, json: async () => x });
+  const run = async (compress) => {
+    let body;
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async (_u, init) => { body = JSON.parse(init.body); return okJson({ choices: [{ message: { content: '{}' } }] }); };
+      await runVisionAnalysis('data:image/png;base64,A', 'data:image/png;base64,B', 'm', 'openrouter', { compress }).catch(() => {});
+    } finally {
+      global.fetch = originalFetch;
+    }
+    return body;
+  };
+
+  it('downscales both images before sending to vision', async () => {
+    const calls = [];
+    const compress = async (uri, max, q) => { calls.push([max, q]); return 'data:image/jpeg;base64,SMALL'; };
+    const body = await run(compress);
+    expect(calls).toEqual([[1024, 0.8], [1024, 0.8]]);
+    const imgs = body.messages[1].content.filter(p => p.type === 'image_url');
+    expect(imgs.every(p => p.image_url.url.endsWith('SMALL') && p.image_url.detail === 'auto')).toBe(true);
+    expect(body.stream).toBe(false);
+  });
+
+  it('falls back to original image if compression throws', async () => {
+    const compress = async () => { throw new Error('no canvas'); };
+    const body = await run(compress);
+    const urls = body.messages[1].content.filter(p => p.type === 'image_url').map(p => p.image_url.url);
+    expect(urls).toEqual(['data:image/png;base64,A', 'data:image/png;base64,B']);
   });
 });

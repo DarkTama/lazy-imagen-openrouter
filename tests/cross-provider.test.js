@@ -67,7 +67,8 @@ describe('Cross-provider pipeline integration', () => {
         'data:image/png;base64,src',
         'data:image/png;base64,ref',
         'llava-1.6',
-        state.orchestrator.visionProvider
+        state.orchestrator.visionProvider,
+        { compress: async (u) => u }
       );
 
       expect(analysis.source_char).toBe('samurai warrior');
