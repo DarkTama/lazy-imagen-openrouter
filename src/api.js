@@ -409,12 +409,14 @@ export async function fetchProviderModels(providerId, { force = false } = {}) {
                 supportsImageInput: !!m.supportsImageInput,
                 maxReferences: m.supportsImageInput ? 1 : 0
             });
-            if (m.kind === 'image') {
+            const existing = MODEL_CONFIGS[m.id];
+            if (m.kind === 'image' && (!existing || existing.provider === providerId)) {
+                const keptRefs = m.maxReferences ?? (existing ? existing.maxReferences : undefined);
                 MODEL_CONFIGS[m.id] = {
                     name: m.name || m.id,
                     provider: providerId,
                     supportsImageInput: !!m.supportsImageInput,
-                    maxReferences: m.supportsImageInput ? 1 : 0,
+                    maxReferences: keptRefs ?? (m.supportsImageInput ? 1 : 0),
                     supportsImageSize: false,
                     supportsAspectRatio: prov.supportsAspectRatio !== false
                 };
@@ -856,7 +858,10 @@ export async function fetchImageModels(providerId) {
                 .map(normalizeOpenRouterModel);
         } else {
             // Custom provider with /models
-            return fetchProviderModels(providerId);
+            const all = await fetchProviderModels(providerId);
+            const visionIds = new Set((Array.isArray(prov.knownModels) ? prov.knownModels : [])
+                .filter(k => k && k.kind === 'vision').map(k => k.id));
+            return all.filter(m => !visionIds.has(m.id));
         }
 
         // Merge live-only models into MODEL_CONFIGS so existing lookups (cost, readiness, info card) work

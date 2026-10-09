@@ -4,7 +4,7 @@
 
 import ImagenDB from './db.js';
 import { showToast } from './utils.js';
-import { SUBSCRIPTION_IMAGE_ALLOWLIST } from './providers.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 
 // ===== Per-provider storage helpers =====
 // Exported so app.js can call them when switching providers.
@@ -57,7 +57,13 @@ export function loadSelectedModelForProvider(providerId, role = 'image') {
     if (stored) return stored;
     if (role === 'vision') return providerId === 'nanogpt' ? '' : 'google/gemini-2.5-flash';
     if (role === 'research') return 'perplexity/sonar';
-    return providerId === 'nanogpt' ? 'step-image-edit-2' : 'google/gemini-2.5-flash-image';
+    if (providerId === 'nanogpt') return 'step-image-edit-2';
+    const prov = getProvider(providerId);
+    if (prov && prov.isBuiltIn === false && Array.isArray(prov.knownModels)) {
+        const firstImg = prov.knownModels.find(m => m && m.id && m.kind === 'image');
+        if (firstImg) return firstImg.id;
+    }
+    return 'google/gemini-2.5-flash-image';
 }
 
 // One-time migration: flat legacy keys → per-provider namespaced keys.

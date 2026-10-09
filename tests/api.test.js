@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { classifyError } from '../src/orchestrator.js';
 import { extractImageFromMessage, runVisionAnalysis } from '../src/api.js';
+
+afterEach(async () => {
+  const { MODEL_CONFIGS } = await import('../src/state.js');
+  delete MODEL_CONFIGS['m-img'];
+  delete MODEL_CONFIGS['kg-img'];
+});
 
 describe('extractImageFromMessage', () => {
   it('reads a markdown data-URI image in string content', () => {
@@ -340,5 +346,39 @@ describe('provider image capabilities', () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+});
+
+describe('known-model guards', () => {
+  it('does not overwrite a built-in MODEL_CONFIGS entry', async () => {
+    const { fetchProviderModels } = await import('../src/api.js');
+    const { saveCustomProvider } = await import('../src/providers.js');
+    const { MODEL_CONFIGS } = await import('../src/state.js');
+    const before = JSON.stringify(MODEL_CONFIGS['google/gemini-2.5-flash-image']);
+    const c = saveCustomProvider({
+      name: 'Shadow', base: 'https://s.example/v1',
+      knownModels: [{ id: 'google/gemini-2.5-flash-image', kind: 'image', supportsImageInput: false }]
+    });
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async () => { throw new Error('down'); };
+      await fetchProviderModels(c.id, { force: true });
+      expect(JSON.stringify(MODEL_CONFIGS['google/gemini-2.5-flash-image'])).toBe(before);
+    } finally { global.fetch = originalFetch; }
+  });
+  it('fetchImageModels custom excludes vision known models', async () => {
+    const { fetchImageModels } = await import('../src/api.js');
+    const { saveCustomProvider } = await import('../src/providers.js');
+    const c = saveCustomProvider({
+      name: 'Vis', base: 'https://v.example/v1',
+      knownModels: [{ id: 'kg-img', kind: 'image' }, { id: 'kg-vis', kind: 'vision' }]
+    });
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async () => { throw new Error('down'); };
+      const ids = (await fetchImageModels(c.id)).map(m => m.id);
+      expect(ids).toContain('kg-img');
+      expect(ids).not.toContain('kg-vis');
+    } finally { global.fetch = originalFetch; }
   });
 });

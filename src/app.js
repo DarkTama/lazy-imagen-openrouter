@@ -687,6 +687,7 @@ function setupEventListeners() {
             const id = elements.providerFormId.value;
             if (!id || isBuiltInProvider(id)) return;
             if (confirm('Delete this provider?')) {
+                const wasActiveGen = state.generationProvider === id || state.provider === id;
                 deleteCustomProvider(id);
                 showToast('Provider deleted', 'success');
                 if (state.generationProvider === id) state.generationProvider = 'openrouter';
@@ -695,6 +696,10 @@ function setupEventListeners() {
                 resetProviderForm();
                 renderProviderModalList();
                 rebuildAllProviderSelectors();
+                if (wasActiveGen) {
+                    switchProvider('openrouter');
+                    applyAspectSupport(getProvider('openrouter'));
+                }
             }
         });
     }

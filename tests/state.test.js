@@ -55,3 +55,17 @@ describe('resolveReuseModel', () => {
         expect(resolveReuseModel('foo/bar-xyz', MODEL_CONFIGS)).toEqual({ selectedModel: null, custom: 'foo/bar-xyz' });
     });
 });
+
+describe('loadSelectedModelForProvider custom known models', () => {
+    beforeEach(() => { localStorage.clear(); });
+    it('defaults to first known image model for a custom provider', async () => {
+        const { saveCustomProvider } = await import('../src/providers.js');
+        const { loadSelectedModelForProvider } = await import('../src/state.js');
+        const c = saveCustomProvider({
+            name: 'KD', base: 'https://kd.example/v1',
+            knownModels: [{ id: 'v1', kind: 'vision' }, { id: 'img-a', kind: 'image' }, { id: 'img-b', kind: 'image' }]
+        });
+        expect(loadSelectedModelForProvider(c.id)).toBe('img-a');
+        expect(loadSelectedModelForProvider('openrouter')).toBe('google/gemini-2.5-flash-image');
+    });
+});

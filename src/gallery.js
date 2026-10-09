@@ -595,7 +595,8 @@ function restoreGenerationSettings(image) {
     state.generationModelCustom = reuse.custom;
     saveCustomGenerationModel(state.provider, reuse.custom);
     if (elements.generationModelCustom) elements.generationModelCustom.value = reuse.custom;
-    const modelOption = document.querySelector(`#modelSelectOptions .custom-select-option[data-value="${image.model}"]`);
+    const modelOption = Array.from(document.querySelectorAll('#modelSelectOptions .custom-select-option'))
+        .find(opt => opt.dataset.value === image.model);
     if (modelOption) {
         document.querySelectorAll('#modelSelectOptions .custom-select-option').forEach(o => o.classList.remove('selected'));
         modelOption.classList.add('selected');
