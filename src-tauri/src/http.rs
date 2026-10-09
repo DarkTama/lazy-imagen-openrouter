@@ -10,6 +10,8 @@ use crate::keys::{self, SecretStore};
 
 const MAX_BODY: usize = 50 * 1024 * 1024;
 
+/// Response as returned to JS. `body` is UTF-8 text (lossy conversion), so
+/// binary downloads must NOT use the provider path.
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResult {
@@ -82,6 +84,24 @@ pub(crate) fn resolve_key(
     }
 }
 
+/// Read body in chunks, failing as soon as `limit` is exceeded.
+/// Body is returned as lossy UTF-8 text; not for binary downloads.
+pub(crate) async fn read_capped(mut resp: reqwest::Response, limit: usize) -> Result<String, String> {
+    if resp.content_length().is_some_and(|l| l > limit as u64) {
+        return Err("response too large".into());
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("network: {}", e.without_url()))? {
+        if buf.len() + chunk.len() > limit {
+            return Err("response too large".into());
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Performs the request. Body is returned as UTF-8 text (lossy); binary
+/// downloads must not use the provider path.
 pub(crate) async fn execute(
     client: &reqwest::Client,
     prepared: Prepared,
@@ -102,14 +122,8 @@ pub(crate) async fn execute(
             headers.insert(k.as_str().to_string(), v.to_string());
         }
     }
-    if resp.content_length().is_some_and(|l| l > MAX_BODY as u64) {
-        return Err("response too large".into());
-    }
-    let bytes = resp.bytes().await.map_err(|e| format!("network: {}", e.without_url()))?;
-    if bytes.len() > MAX_BODY {
-        return Err("response too large".into());
-    }
-    Ok(FetchResult { status, headers, body: String::from_utf8_lossy(&bytes).into_owned() })
+    let body = read_capped(resp, MAX_BODY).await?;
+    Ok(FetchResult { status, headers, body })
 }
 
 #[tauri::command]
@@ -224,5 +238,61 @@ mod tests {
         let req = t.join().unwrap().to_ascii_lowercase();
         assert!(req.contains("authorization: bearer k"));
         assert!(!req.contains("leak"));
+    }
+
+    fn serve_once(raw: Vec<u8>) -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                let n = sock.read(&mut chunk).unwrap();
+                buf.extend_from_slice(&chunk[..n]);
+                if n == 0 || buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let _ = sock.write_all(&raw);
+        });
+        port
+    }
+
+    async fn get_capped(port: u16, limit: usize) -> Result<String, String> {
+        let client = build_client().unwrap();
+        let resp = client.get(format!("http://127.0.0.1:{port}/")).send().await.unwrap();
+        read_capped(resp, limit).await
+    }
+
+    #[test]
+    fn read_capped_rejects_close_delimited_body() {
+        let mut raw = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec();
+        raw.extend(std::iter::repeat(b'a').take(4096));
+        let port = serve_once(raw);
+        let r = tauri::async_runtime::block_on(get_capped(port, 1024));
+        assert_eq!(r.unwrap_err(), "response too large");
+    }
+
+    #[test]
+    fn read_capped_rejects_chunked_body() {
+        let mut raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".to_vec();
+        for _ in 0..4 {
+            raw.extend_from_slice(b"400\r\n");
+            raw.extend(std::iter::repeat(b'a').take(1024));
+            raw.extend_from_slice(b"\r\n");
+        }
+        raw.extend_from_slice(b"0\r\n\r\n");
+        let port = serve_once(raw);
+        let r = tauri::async_runtime::block_on(get_capped(port, 1024));
+        assert_eq!(r.unwrap_err(), "response too large");
+    }
+
+    #[test]
+    fn read_capped_accepts_under_limit() {
+        let raw = b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello".to_vec();
+        let port = serve_once(raw);
+        let r = tauri::async_runtime::block_on(get_capped(port, 1024));
+        assert_eq!(r.unwrap(), "hello");
     }
 }

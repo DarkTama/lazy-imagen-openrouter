@@ -65,7 +65,7 @@ async function desktopRequest(providerId, url, init, keyOverride) {
         headers: new Headers(result.headers || {}),
         text: async () => body,
         json: async () => JSON.parse(body),
-        blob: async () => new Blob([body]),
+        blob: async () => { throw new Error('binary bodies not supported over provider_fetch'); },
     };
 }
 

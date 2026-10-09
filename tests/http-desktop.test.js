@@ -34,7 +34,7 @@ describe('providerRequest (desktop)', () => {
         expect(res.headers.get('content-type')).toBe('application/json');
         expect(await res.json()).toEqual({ a: 1 });
         expect(await res.text()).toBe('{"a":1}');
-        expect((await res.blob()).size).toBe(7);
+        await expect(res.blob()).rejects.toThrow('binary bodies not supported over provider_fetch');
         expect(fetch).not.toHaveBeenCalled();
     });
 
