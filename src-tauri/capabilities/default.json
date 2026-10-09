@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default capability for the main window",
   "windows": ["main"],
-  "permissions": ["core:default", "allow-key-set", "allow-key-has", "allow-key-remove"]
+  "permissions": ["core:default", "allow-key-set", "allow-key-has", "allow-key-remove", "allow-provider-fetch"]
 }

@@ -561,7 +561,12 @@ function setupEventListeners() {
         const entered = elements.apiKey.value.trim();
         if (isDesktop()) {
             if (!entered) { showToast('Enter a key to save', 'error'); return; }
-            await keyStore.set(state.provider, entered);
+            try {
+                await keyStore.set(state.provider, entered);
+            } catch (err) {
+                showToast(String(err), 'error');
+                return;
+            }
             state.apiKey = '';
             state.hasKey = true;
             applyDesktopKeyUI();
@@ -658,10 +663,10 @@ function setupEventListeners() {
     }
 
     if (elements.generationProviderSelect) {
-        elements.generationProviderSelect.addEventListener('change', (e) => {
+        elements.generationProviderSelect.addEventListener('change', async (e) => {
             const chosen = e.target.value;
             state.generationProvider = chosen;
-            switchProvider(chosen);
+            await switchProvider(chosen);
             applyAspectSupport(getProvider(chosen));
         });
     }
@@ -689,7 +694,12 @@ function setupEventListeners() {
             ));
 
             if (apiKey) {
-                await keyStore.set(saved.id, apiKey, { remember: true });
+                try {
+                    await keyStore.set(saved.id, apiKey, { remember: true });
+                } catch (err) {
+                    showToast(String(err), 'error');
+                    return;
+                }
                 if (saved.id === state.provider) { state.apiKey = isDesktop() ? '' : apiKey; state.hasKey = true; applyDesktopKeyUI(); }
             }
 
