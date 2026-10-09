@@ -185,3 +185,31 @@ describe('custom provider api execution & connection test', () => {
   });
 });
 
+
+describe('VISION_SYSTEM_PROMPT (garment description)', () => {
+  it('asks for garment-centric clothing descriptions', async () => {
+    const { VISION_SYSTEM_PROMPT } = await import('../src/api.js');
+    expect(VISION_SYSTEM_PROMPT).toMatch(/garment/i);
+    expect(VISION_SYSTEM_PROMPT).toMatch(/neckline/i);
+  });
+  it('no longer uses body-part wording in its example', async () => {
+    const { VISION_SYSTEM_PROMPT } = await import('../src/api.js');
+    expect(VISION_SYSTEM_PROMPT).not.toMatch(/thigh/i);
+  });
+  it('caps field length at 25 words', async () => {
+    const { VISION_SYSTEM_PROMPT } = await import('../src/api.js');
+    expect(VISION_SYSTEM_PROMPT).toMatch(/25 words/);
+  });
+  it('still lists all 21 keys', async () => {
+    const { VISION_SYSTEM_PROMPT } = await import('../src/api.js');
+    expect(VISION_SYSTEM_PROMPT.match(/^\s{2}(source|ref)_\w+/gm)).toHaveLength(21);
+  });
+});
+
+describe('ANALYSIS_VERSION', () => {
+  it('is exported as a non-empty string', async () => {
+    const { ANALYSIS_VERSION } = await import('../src/state.js');
+    expect(typeof ANALYSIS_VERSION).toBe('string');
+    expect(ANALYSIS_VERSION.length).toBeGreaterThan(0);
+  });
+});

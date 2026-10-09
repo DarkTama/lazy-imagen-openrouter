@@ -44,7 +44,9 @@ export class ApiError extends Error {
 // ===== Vision system prompt =====
 export const VISION_SYSTEM_PROMPT = `You analyze two images for a prompt-composition pipeline. Image 1 is the SOURCE (character to preserve). Image 2 is the REFERENCE (style/pose/clothes donor).
 
-Return ONLY a JSON object with these keys. Each value is a string that is SPECIFIC and CONCRETE \u2014 name actual colors, materials, garment types, hair details, and visual specifics rather than vague summaries. 1-2 sentences each. (Good: "oversized cream cable-knit sweater, pleated navy skirt, black thigh-high socks". Bad: "casual outfit".) No markdown, no code fences:
+Return ONLY a JSON object with these keys. Each value is a string that is SPECIFIC and CONCRETE \u2014 name actual colors, materials, hair details, and visual specifics rather than vague summaries. Max 25 words per value; comma-separated phrases allowed.
+
+For clothing and accessories fields, give a Garment Description: name the garment type, cut, neckline, sleeve style, length (e.g. "knee-length", "mini-length"), material, color, and trim/patterns. Describe the clothes, not the body or skin beneath them. (Good: "cream cable-knit sweater, pleated navy knee-length skirt, black loafers". Bad: "casual outfit".) No markdown, no code fences:
   source_char        \u2014 physical features of the character in Image 1
   source_clothing    \u2014 what they're wearing in Image 1
   source_pose        \u2014 pose / body language in Image 1

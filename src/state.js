@@ -57,6 +57,9 @@ migrateStorageKeys();
 const _activeGenerationProvider = localStorage.getItem('imagen_generation_provider') || localStorage.getItem('imagen_provider') || 'openrouter';
 
 // ===== Orchestrator Defaults =====
+// Bump whenever VISION_SYSTEM_PROMPT or Vision image preprocessing changes.
+export const ANALYSIS_VERSION = '2';
+
 export const ORCHESTRATOR_DEFAULTS = {
     enabled: false,
     sourceImage: null,       // base64 data URI
