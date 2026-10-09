@@ -394,8 +394,37 @@ export async function fetchProviderModels(providerId, { force = false } = {}) {
     }
 
     if (force) sessionStorage.removeItem(modelListCacheKey(providerId, 'all'));
+    const known = Array.isArray(prov.knownModels) ? prov.knownModels : [];
+    const applyKnown = (live) => {
+        const byId = new Map();
+        live.forEach(m => byId.set(m.id, m));
+        known.forEach(m => {
+            if (!m || !m.id) return;
+            const prev = byId.get(m.id) || {};
+            byId.set(m.id, {
+                ...prev,
+                id: m.id,
+                name: m.name || prev.name || m.id,
+                provider: providerId,
+                supportsImageInput: !!m.supportsImageInput,
+                maxReferences: m.supportsImageInput ? 1 : 0
+            });
+            if (m.kind === 'image') {
+                MODEL_CONFIGS[m.id] = {
+                    name: m.name || m.id,
+                    provider: providerId,
+                    supportsImageInput: !!m.supportsImageInput,
+                    maxReferences: m.supportsImageInput ? 1 : 0,
+                    supportsImageSize: false,
+                    supportsAspectRatio: prov.supportsAspectRatio !== false
+                };
+            }
+        });
+        return [...byId.values()];
+    };
+
     const cached = readModelListCache(providerId, 'all');
-    if (cached) return cached;
+    if (cached) return applyKnown(cached);
 
     try {
         const key = loadApiKeyForProvider(providerId);
@@ -418,11 +447,23 @@ export async function fetchProviderModels(providerId, { force = false } = {}) {
         }).filter(m => m.id);
 
         writeModelListCache(providerId, 'all', models);
-        return models;
+        return applyKnown(models);
     } catch (e) {
         console.warn(`Failed to fetch models for ${providerId}:`, e);
-        return [];
+        return applyKnown([]);
     }
+}
+
+export function resolveImageConfigStyle(prov, modelId, modelConfig = {}) {
+    if (!prov || prov.isBuiltIn !== false) {
+        const isGemini = String(modelId || '').includes('gemini');
+        if (modelConfig.supportsImageSize && isGemini) return 'gemini';
+        if (modelConfig.supportsAspectRatio && !isGemini) return 'flat';
+        return 'none';
+    }
+    if (prov.supportsAspectRatio === false) return 'none';
+    const style = prov.imageConfigStyle || 'flat';
+    return ['gemini', 'flat', 'none'].includes(style) ? style : 'flat';
 }
 
 export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } = {}) {
@@ -467,14 +508,16 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
         modalities: modelConfig.modalities || ['image', 'text']
     };
 
-    if (modelConfig.supportsImageSize && state.selectedModel.includes('gemini')) {
-        requestBody.image_config = {
-            image_size: state.imageQuality.toLowerCase(),
-            aspect_ratio: state.aspectRatio
-        };
-    }
-
-    if (modelConfig.supportsAspectRatio && !state.selectedModel.includes('gemini')) {
+    const imageStyle = resolveImageConfigStyle(prov, state.selectedModel, modelConfig);
+    if (imageStyle === 'gemini') {
+        requestBody.image_config = { aspect_ratio: state.aspectRatio };
+        if (modelConfig.supportsImageSize) {
+            requestBody.image_config = {
+                image_size: state.imageQuality.toLowerCase(),
+                aspect_ratio: state.aspectRatio
+            };
+        }
+    } else if (imageStyle === 'flat') {
         requestBody.aspect_ratio = state.aspectRatio;
     }
 

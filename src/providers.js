@@ -149,6 +149,9 @@ export function loadCustomProviders() {
         if (!Array.isArray(parsed)) return [];
         return parsed.map(p => ({
             ...p,
+            imageConfigStyle: p.imageConfigStyle || 'flat',
+            supportsAspectRatio: p.supportsAspectRatio !== false,
+            knownModels: Array.isArray(p.knownModels) ? p.knownModels : [],
             base: normalizeBaseUrl(p.base),
             label: p.name,
             isBuiltIn: false,
@@ -206,6 +209,9 @@ export function saveCustomProvider(config) {
         imagesUrl: config.imagesUrl || `${base}/images/generations`,
         modelsUrl: config.modelsUrl || `${base}/models`,
         isBuiltIn: false,
+        imageConfigStyle: ['gemini', 'flat', 'none'].includes(config.imageConfigStyle) ? config.imageConfigStyle : 'flat',
+        supportsAspectRatio: config.supportsAspectRatio !== false,
+        knownModels: Array.isArray(config.knownModels) ? config.knownModels : [],
         capabilities: {
             imageGen: config.capabilities?.imageGen ?? false,
             chatVision: config.capabilities?.chatVision ?? true

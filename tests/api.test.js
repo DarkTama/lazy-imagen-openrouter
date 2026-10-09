@@ -264,3 +264,81 @@ describe('runVisionAnalysis compression', () => {
     expect(urls).toEqual(['data:image/png;base64,A', 'data:image/png;base64,B']);
   });
 });
+
+describe('provider image capabilities', () => {
+  async function runChat(provCfg, modelId, modelConfig, providerId) {
+    const { generateSingleImage } = await import('../src/api.js');
+    const { saveCustomProvider } = await import('../src/providers.js');
+    const { state } = await import('../src/state.js');
+    if (provCfg) providerId = saveCustomProvider({ name: 'Chat P', base: 'https://c.example/v1', imageStrategy: 'chat-modalities', ...provCfg }).id;
+    state.generationProvider = providerId;
+    state.selectedModel = modelId;
+    state.aspectRatio = '16:9';
+    state.imageQuality = '2K';
+    state.autoRetryEnabled = false;
+    state.references = [];
+    let body;
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async (url, opts) => {
+        body = JSON.parse(opts.body);
+        return { ok: true, json: async () => ({ choices: [{ message: { images: [{ image_url: { url: 'data:image/png;base64,QUJD' } }] } }] }) };
+      };
+      await generateSingleImage('p', modelConfig);
+    } finally {
+      global.fetch = originalFetch;
+    }
+    return body;
+  }
+
+  it('custom gemini style sets image_config.aspect_ratio', async () => {
+    const b = await runChat({ imageConfigStyle: 'gemini' }, 'foo/bar', { supportsImageSize: false });
+    expect(b.image_config).toEqual({ aspect_ratio: '16:9' });
+    expect(b.aspect_ratio).toBeUndefined();
+  });
+  it('custom flat style sets top-level aspect_ratio', async () => {
+    const b = await runChat({ imageConfigStyle: 'flat' }, 'foo/bar', {});
+    expect(b.aspect_ratio).toBe('16:9');
+    expect(b.image_config).toBeUndefined();
+  });
+  it('custom supportsAspectRatio false sends neither', async () => {
+    const b = await runChat({ imageConfigStyle: 'gemini', supportsAspectRatio: false }, 'foo/bar', {});
+    expect(b.aspect_ratio).toBeUndefined();
+    expect(b.image_config).toBeUndefined();
+  });
+  it('openrouter gemini unchanged', async () => {
+    const b = await runChat(null, 'google/gemini-2.5-flash-image', { supportsImageSize: true }, 'openrouter');
+    expect(b.image_config).toEqual({ image_size: '2k', aspect_ratio: '16:9' });
+    expect(b.aspect_ratio).toBeUndefined();
+  });
+  it('openrouter non-gemini uses top-level aspect_ratio', async () => {
+    const b = await runChat(null, 'openai/gpt-x', { supportsAspectRatio: true }, 'openrouter');
+    expect(b.aspect_ratio).toBe('16:9');
+  });
+
+  it('fetchProviderModels merges knownModels and writes MODEL_CONFIGS', async () => {
+    const { fetchProviderModels } = await import('../src/api.js');
+    const { saveCustomProvider } = await import('../src/providers.js');
+    const { MODEL_CONFIGS } = await import('../src/state.js');
+    const c = saveCustomProvider({
+      name: 'Known', base: 'https://k.example/v1',
+      knownModels: [{ id: 'm-img', name: 'Known Img', kind: 'image', supportsImageInput: false }, { id: 'm-live', kind: 'vision', supportsImageInput: false }]
+    });
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = async () => ({ ok: true, json: async () => ({ data: [{ id: 'm-live' }, { id: 'other' }] }) });
+      const list = await fetchProviderModels(c.id, { force: true });
+      expect(list.map(m => m.id).sort()).toEqual(['m-img', 'm-live', 'other']);
+      expect(list.find(m => m.id === 'm-live').supportsImageInput).toBe(false);
+      expect(list.find(m => m.id === 'other').supportsImageInput).toBe(true);
+      expect(MODEL_CONFIGS['m-img'].supportsImageInput).toBe(false);
+      expect(MODEL_CONFIGS['m-img'].provider).toBe(c.id);
+
+      global.fetch = async () => { throw new Error('down'); };
+      const list2 = await fetchProviderModels(c.id, { force: true });
+      expect(list2.map(m => m.id).sort()).toEqual(['m-img', 'm-live']);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});

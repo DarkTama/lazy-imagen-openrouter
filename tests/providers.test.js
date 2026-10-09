@@ -68,3 +68,24 @@ describe('providers registry', () => {
         expect(getProvider('openrouter')).not.toBeNull();
     });
 });
+
+describe('custom provider image capabilities', () => {
+    beforeEach(() => { localStorage.clear(); });
+
+    it('round-trips imageConfigStyle, supportsAspectRatio, knownModels', () => {
+        const km = [{ id: 'img-1', name: 'Img', kind: 'image', supportsImageInput: true, notes: 'n' }];
+        const c = saveCustomProvider({ name: 'X', base: 'http://h/v1', imageConfigStyle: 'gemini', supportsAspectRatio: false, knownModels: km });
+        const f = getProvider(c.id);
+        expect(f.imageConfigStyle).toBe('gemini');
+        expect(f.supportsAspectRatio).toBe(false);
+        expect(f.knownModels).toEqual(km);
+    });
+
+    it('defaults for legacy stored providers', () => {
+        localStorage.setItem(CUSTOM_PROVIDERS_STORAGE_KEY, JSON.stringify([{ id: 'old', name: 'Old', base: 'http://h/v1' }]));
+        const f = getProvider('old');
+        expect(f.imageConfigStyle).toBe('flat');
+        expect(f.supportsAspectRatio).toBe(true);
+        expect(f.knownModels).toEqual([]);
+    });
+});
