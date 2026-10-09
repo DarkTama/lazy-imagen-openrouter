@@ -6,7 +6,7 @@
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
-import { keyStore } from './key-store.js';
+import { keyStore, isDesktop, migrateWebKeysToKeyring } from './key-store.js';
 import { providerRequest } from './http.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate, templateFormValues, mergeTemplateIntoSave } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
@@ -90,6 +90,18 @@ function applyProviderUI(providerId) {
     if (elements.apiKeyLabel) elements.apiKeyLabel.textContent = prov.keyLabel;
     if (elements.apiKeyNote)  elements.apiKeyNote.textContent  = prov.keyNote;
     if (elements.apiKey)      elements.apiKey.placeholder      = prov.keyPlaceholder;
+    applyDesktopKeyUI();
+}
+
+/** Desktop: keys live in the OS keychain; hide "Remember key", show saved hint. */
+function applyDesktopKeyUI() {
+    if (!isDesktop()) return;
+    const row = elements.rememberKeyToggle?.closest('label');
+    if (row) row.hidden = true;
+    if (elements.apiKey) {
+        elements.apiKey.value = '';
+        if (state.hasKey) elements.apiKey.placeholder = '•••• saved in system keychain';
+    }
 }
 
 /**
@@ -281,7 +293,7 @@ function resetProviderForm() {
  * Switch the active provider: persist the change, reload the key/model,
  * rebuild the picker, and update all UI that depends on the provider.
  */
-function switchProvider(newProviderId) {
+async function switchProvider(newProviderId) {
     if (newProviderId === state.provider) return;
 
     // Save current model under the old provider before switching
@@ -291,7 +303,7 @@ function switchProvider(newProviderId) {
     localStorage.setItem('imagen_provider', newProviderId);
 
     state.apiKey      = loadApiKeyForProvider(newProviderId);
-    state.hasKey      = Boolean(state.apiKey);
+    state.hasKey      = isDesktop() ? await keyStore.has(newProviderId) : Boolean(state.apiKey);
     state.rememberKey = loadRememberKeyForProvider(newProviderId);
     state.selectedModel = loadSelectedModelForProvider(newProviderId);
     state.generationModelCustom = loadCustomGenerationModel(newProviderId);
@@ -333,6 +345,10 @@ function switchProvider(newProviderId) {
 // ===== Initialization =====
 async function init() {
     initElements();
+    if (isDesktop()) {
+        await migrateWebKeysToKeyring();
+        state.hasKey = await keyStore.has(state.provider);
+    }
     initTheme();
 
     if (elements.themeToggleBtn) {
@@ -358,6 +374,7 @@ async function init() {
 
     elements.apiKey.value = state.apiKey;
     elements.rememberKeyToggle.checked = state.rememberKey;
+    applyDesktopKeyUI();
 
     renderReferenceSlots();
 
@@ -541,9 +558,18 @@ function setupEventListeners() {
     }
 
     elements.saveApiKey.addEventListener('click', async () => {
-        state.apiKey = elements.apiKey.value.trim();
-        state.hasKey = Boolean(state.apiKey);
-        await keyStore.set(state.provider, state.apiKey, { remember: state.rememberKey });
+        const entered = elements.apiKey.value.trim();
+        if (isDesktop()) {
+            if (!entered) { showToast('Enter a key to save', 'error'); return; }
+            await keyStore.set(state.provider, entered);
+            state.apiKey = '';
+            state.hasKey = true;
+            applyDesktopKeyUI();
+        } else {
+            state.apiKey = entered;
+            state.hasKey = Boolean(state.apiKey);
+            await keyStore.set(state.provider, state.apiKey, { remember: state.rememberKey });
+        }
         showToast('API key saved!', 'success');
         renderOrchestratorReadiness();
         if (isMobileLayout()) closeSidebar();
@@ -564,6 +590,7 @@ function setupEventListeners() {
             state.apiKey = '';
             state.hasKey = false;
             elements.apiKey.value = '';
+            if (isDesktop()) elements.apiKey.placeholder = getProvider(state.provider).keyPlaceholder;
             showToast('API key cleared', 'success');
             renderOrchestratorReadiness();
         }
@@ -663,7 +690,7 @@ function setupEventListeners() {
 
             if (apiKey) {
                 await keyStore.set(saved.id, apiKey, { remember: true });
-                if (saved.id === state.provider) { state.apiKey = apiKey; state.hasKey = true; }
+                if (saved.id === state.provider) { state.apiKey = isDesktop() ? '' : apiKey; state.hasKey = true; applyDesktopKeyUI(); }
             }
 
             showToast(`Provider "${saved.name}" saved`, 'success');

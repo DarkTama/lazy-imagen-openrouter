@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-key-has"
+description = "Enables the key_has command without any pre-configured scope."
+commands.allow = ["key_has"]
+
+[[permission]]
+identifier = "deny-key-has"
+description = "Denies the key_has command without any pre-configured scope."
+commands.deny = ["key_has"]
