@@ -7,6 +7,7 @@ import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
 import { keyStore } from './key-store.js';
+import { providerRequest } from './http.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate, templateFormValues, mergeTemplateIntoSave } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
@@ -577,7 +578,7 @@ function setupEventListeners() {
         try {
             const prov = getProvider(state.provider);
             const testUrl = prov.modelsUrl || prov.imageModelsUrl;
-            const res = await fetch(testUrl, { headers: prov.headers(key) });
+            const res = await providerRequest(state.provider, testUrl, { headers: prov.headers('') }, { keyOverride: key });
             if (res.ok) {
                 showToast(`${prov.label} connection successful — API key is valid`, 'success');
             } else {
@@ -717,8 +718,7 @@ function setupEventListeners() {
             } else {
                 // Ad-hoc test before saving
                 try {
-                    const headers = key ? { 'Authorization': `Bearer ${key}` } : {};
-                    const resp = await fetch(`${base}/models`, { headers });
+                    const resp = await providerRequest(null, `${base}/models`, {}, { keyOverride: key });
                     if (resp.ok) {
                         elements.providerTestStatus.className = 'provider-test-status success';
                         elements.providerTestStatus.textContent = 'Endpoint reachable!';

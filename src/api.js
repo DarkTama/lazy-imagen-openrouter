@@ -7,6 +7,7 @@ import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MO
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal, compressDataUri } from './utils.js';
 import { retryWithBackoff } from './retry.js';
+import { providerRequest } from './http.js';
 
 // Returns provider base URL and auth headers for a given or active provider.
 export function providerFetchArgs(providerId = null) {
@@ -15,14 +16,14 @@ export function providerFetchArgs(providerId = null) {
     if (!prov) {
         throw new Error(`Unknown provider: ${pId}`);
     }
-    const key = (providerId && providerId !== state.generationProvider)
-        ? loadApiKeyForProvider(pId)
-        : (state.apiKey || loadApiKeyForProvider(pId));
+    // Headers carry no Authorization; providerRequest attaches the key.
+    const headers = prov.headers ? prov.headers('') : { 'Content-Type': 'application/json' };
     return {
         providerId: pId,
         provider: prov,
         base: prov.base,
-        headers: prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' }
+        headers,
+        request: (url, init) => providerRequest(pId, url, { ...init, headers: { ...headers, ...(init?.headers || {}) } })
     };
 }
 
@@ -87,10 +88,9 @@ export async function runVisionAnalysis(sourceB64, referenceB64, modelId, provid
     const targetProviderId = providerId || state.orchestrator?.visionProvider || 'openrouter';
     let response;
     try {
-        const { base, headers } = providerFetchArgs(targetProviderId);
-        response = await fetch(`${base}/chat/completions`, {
+        const { base, request } = providerFetchArgs(targetProviderId);
+        response = await request(`${base}/chat/completions`, {
             method: 'POST',
-            headers,
             body: JSON.stringify({
                 model: modelId,
                 stream: false,
@@ -172,10 +172,9 @@ export async function researchSubject(subjectText, modelId, providerId = null) {
     const targetProviderId = providerId || state.orchestrator?.researchProvider || 'openrouter';
     let response;
     try {
-        const { base, headers } = providerFetchArgs(targetProviderId);
-        response = await fetch(`${base}/chat/completions`, {
+        const { base, request } = providerFetchArgs(targetProviderId);
+        response = await request(`${base}/chat/completions`, {
             method: 'POST',
-            headers,
             body: JSON.stringify({
                 model: modelId,
                 stream: false,
@@ -290,11 +289,10 @@ export function extractImageFromMessage(message) {
 export async function runImageEdit(imageDataUri, instruction, modelId, { signal } = {}) {
     let response;
     try {
-        const { base, headers } = providerFetchArgs();
-        response = await fetch(`${base}/chat/completions`, {
+        const { base, request } = providerFetchArgs();
+        response = await request(`${base}/chat/completions`, {
             method: 'POST',
             signal,
-            headers,
             body: JSON.stringify({
                 model: modelId,
                 stream: false,
@@ -369,10 +367,9 @@ export async function testProviderConnection(providerId) {
     try {
         const prov = getProvider(providerId);
         if (!prov) return { ok: false, error: 'Provider not found' };
-        const key = loadApiKeyForProvider(providerId);
-        const headers = prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' };
+        const { request } = providerFetchArgs(providerId);
         const testUrl = prov.modelsUrl || `${prov.base}/models`;
-        const resp = await fetch(testUrl, { method: 'GET', headers });
+        const resp = await request(testUrl, { method: 'GET' });
         if (!resp.ok) {
             const txt = await resp.text().catch(() => '');
             return { ok: false, error: `HTTP ${resp.status}: ${txt.slice(0, 150)}` };
@@ -429,10 +426,9 @@ export async function fetchProviderModels(providerId, { force = false } = {}) {
     if (cached) return applyKnown(cached);
 
     try {
-        const key = loadApiKeyForProvider(providerId);
-        const headers = prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' };
+        const { request } = providerFetchArgs(providerId);
         const url = prov.modelsUrl || `${prov.base}/models`;
-        const resp = await fetch(url, { headers });
+        const resp = await request(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const list = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
@@ -526,10 +522,9 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
     const modelId = getEffectiveGenerationModel();
     let response;
     try {
-        const { base, headers } = providerFetchArgs(providerId);
-        response = await fetch(`${base}/chat/completions`, {
+        const { base, request } = providerFetchArgs(providerId);
+        response = await request(`${base}/chat/completions`, {
             method: 'POST',
-            headers,
             body: JSON.stringify(requestBody)
         });
     } catch (netErr) {
@@ -576,7 +571,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
     };
 
     const doGenerateImagesEndpoint = async () => {
-        const { headers } = providerFetchArgs(providerId);
+        const { request } = providerFetchArgs(providerId);
         const modelId = getEffectiveGenerationModel();
         const endpointUrl = prov.imagesUrl || `${prov.base}/images/generations`;
         const body = {
@@ -593,7 +588,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
         }
         let response;
         try {
-            response = await fetch(endpointUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+            response = await request(endpointUrl, { method: 'POST', body: JSON.stringify(body) });
         } catch (netErr) {
             throw new ApiError({
                 kind: 'network', stage: 'generation', role: 'generation', modelId, providerId,
@@ -651,7 +646,7 @@ export async function fetchModelPricing() {
     }
 
     try {
-        const response = await fetch('https://openrouter.ai/api/v1/models');
+        const response = await providerRequest(null, 'https://openrouter.ai/api/v1/models');
         if (!response.ok) throw new Error(`/models returned ${response.status}`);
         const json = await response.json();
         const list = Array.isArray(json.data) ? json.data : [];
@@ -705,7 +700,7 @@ function writeModelListCache(providerId, kind, models) {
 async function fetchNanoSubscriptionIds() {
     try {
         const prov = getProvider('nanogpt');
-        const resp = await fetch(prov.subscriptionModelsUrl, { headers: prov.headers(state.apiKey) });
+        const resp = await providerFetchArgs('nanogpt').request(prov.subscriptionModelsUrl);
         if (!resp.ok) return new Set();
         const data = await resp.json();
         const list = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
@@ -779,10 +774,9 @@ export async function fetchChatModels(providerId, { force = false } = {}) {
     if (!prov) return [];
 
     try {
-        const key = loadApiKeyForProvider(providerId);
-        const headers = prov.headers ? prov.headers(key) : { 'Content-Type': 'application/json' };
+        const { request } = providerFetchArgs(providerId);
         const url = prov.modelsUrl || `${prov.base}/models`;
-        const resp = await fetch(url, { headers });
+        const resp = await request(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const list = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
@@ -830,7 +824,7 @@ export async function fetchImageModels(providerId) {
         if (providerId === 'nanogpt') {
             const [subscriptionSet, rawResp] = await Promise.all([
                 fetchNanoSubscriptionIds(),
-                fetch(`${prov.imageModelsUrl}?detailed=true`, { headers: prov.headers(state.apiKey) })
+                providerFetchArgs('nanogpt').request(`${prov.imageModelsUrl}?detailed=true`)
             ]);
             if (!rawResp.ok) throw new Error(`image-models ${rawResp.status}`);
             const data = await rawResp.json();
@@ -849,7 +843,7 @@ export async function fetchImageModels(providerId) {
                 }
             }
         } else if (providerId === 'openrouter') {
-            const resp = await fetch(prov.modelsUrl);
+            const resp = await providerRequest(null, prov.modelsUrl);
             if (!resp.ok) throw new Error(`models ${resp.status}`);
             const data = await resp.json();
             const list = Array.isArray(data.data) ? data.data : [];

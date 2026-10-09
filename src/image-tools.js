@@ -10,6 +10,7 @@
  */
 
 import { elements } from './elements.js';
+import { providerRequest } from './http.js';
 import { state, MODEL_CONFIGS } from './state.js';
 import ImagenDB from './db.js';
 import { showToast, approxKB, readFileAsDataURI } from './utils.js';
@@ -407,7 +408,7 @@ async function decodeRecordToCanvas(record) {
         // first, then a crossOrigin-tagged <img>. If both fail there is no
         // client-side workaround (a tainted canvas throws on getImageData).
         try {
-            const resp = await fetch(record.url);
+            const resp = await providerRequest(null, record.url);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const blob = await resp.blob();
             const bmp = await createImageBitmap(blob);
