@@ -19,6 +19,26 @@ export function loadRememberKeyForProvider(providerId) {
     return localStorage.getItem(`imagen_remember_key_${providerId}`) === 'true';
 }
 
+export function loadCustomGenerationModel(providerId) {
+    return localStorage.getItem(`imagen_model_custom_${providerId}`) || '';
+}
+
+export function saveCustomGenerationModel(providerId, value) {
+    const v = (value || '').trim();
+    if (v) localStorage.setItem(`imagen_model_custom_${providerId}`, v);
+    else localStorage.removeItem(`imagen_model_custom_${providerId}`);
+}
+
+export function getEffectiveGenerationModel() {
+    const custom = (state.generationModelCustom || '').trim();
+    return custom || state.selectedModel;
+}
+
+export function getGenerationModelConfig() {
+    const id = getEffectiveGenerationModel();
+    return MODEL_CONFIGS[id] || { name: id, supportsImageInput: false, supportsAspectRatio: true };
+}
+
 export function loadSelectedModelForProvider(providerId, role = 'image') {
     const key = role === 'vision'
         ? `imagen_vision_model_${providerId}`
@@ -320,6 +340,7 @@ export const state = {
     apiKey: loadApiKeyForProvider(_activeGenerationProvider),
     rememberKey: loadRememberKeyForProvider(_activeGenerationProvider),
     selectedModel: loadSelectedModelForProvider(_activeGenerationProvider),
+    generationModelCustom: loadCustomGenerationModel(_activeGenerationProvider),
     imageSize: localStorage.getItem('imagen_size') || '1024x1024',
     imageQuality: localStorage.getItem('imagen_quality') || '1K',
     aspectRatio: localStorage.getItem('imagen_aspect_ratio') || '1:1',

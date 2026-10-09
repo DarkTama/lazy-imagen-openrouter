@@ -3,7 +3,7 @@
  * All calls (generation, vision, research) use the active provider's endpoint and key.
  */
 
-import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS, loadApiKeyForProvider } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS, loadApiKeyForProvider, getEffectiveGenerationModel } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal, compressDataUri } from './utils.js';
 import { retryWithBackoff } from './retry.js';
@@ -497,7 +497,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
     });
 
     const requestBody = {
-        model: state.selectedModel,
+        model: getEffectiveGenerationModel(),
         stream: false,
         messages: [
             {
@@ -508,7 +508,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
         modalities: modelConfig.modalities || ['image', 'text']
     };
 
-    const imageStyle = resolveImageConfigStyle(prov, state.selectedModel, modelConfig);
+    const imageStyle = resolveImageConfigStyle(prov, getEffectiveGenerationModel(), modelConfig);
     if (imageStyle === 'gemini') {
         requestBody.image_config = { aspect_ratio: state.aspectRatio };
         if (modelConfig.supportsImageSize) {
@@ -521,7 +521,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
         requestBody.aspect_ratio = state.aspectRatio;
     }
 
-    const modelId = state.selectedModel;
+    const modelId = getEffectiveGenerationModel();
     let response;
     try {
         const { base, headers } = providerFetchArgs(providerId);
@@ -575,7 +575,7 @@ export async function generateSingleImage(prompt, modelConfig = {}, { onRetry } 
 
     const doGenerateImagesEndpoint = async () => {
         const { headers } = providerFetchArgs(providerId);
-        const modelId = state.selectedModel;
+        const modelId = getEffectiveGenerationModel();
         const endpointUrl = prov.imagesUrl || `${prov.base}/images/generations`;
         const body = {
             model: modelId,

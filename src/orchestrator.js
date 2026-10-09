@@ -2,7 +2,7 @@
  * Orchestrator mode logic.
  */
 
-import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES, ANALYSIS_VERSION } from './state.js';
+import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES, ANALYSIS_VERSION, getGenerationModelConfig } from './state.js';
 import { getProvidersByCapability, getProvider } from './providers.js';
 import { createModelPicker } from './model-picker.js';
 import { elements } from './elements.js';
@@ -200,7 +200,7 @@ export function renderOrchestratorReadiness() {
     const strip = document.getElementById('owReadiness');
     if (!strip) return;
     const o = state.orchestrator;
-    const modelConfig = MODEL_CONFIGS[state.selectedModel];
+    const modelConfig = getGenerationModelConfig();
     const supportsImg = Boolean(modelConfig?.supportsImageInput);
     const isNanoGPT = state.provider === 'nanogpt';
     const imgCapableLabel = (isNanoGPT && !supportsImg)

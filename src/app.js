@@ -5,7 +5,7 @@
 
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
-import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider } from './state.js';
+import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
@@ -37,14 +37,15 @@ function syncGenerationPickerConstraints() {
     const decision = pickImg2imgModel({
         orchestratorEnabled: !!state.orchestrator.enabled,
         providerId: state.provider,
-        selectedModelId: state.selectedModel,
+        selectedModelId: getEffectiveGenerationModel(),
         modelConfigs: MODEL_CONFIGS,
         liveImageModels: state.fetchedModels?.[state.provider]?.image || [],
         knownModels: prov?.knownModels || [],
         allowlist: SUBSCRIPTION_IMAGE_ALLOWLIST,
     });
     _generationPicker.setFilter('img2img', decision.filter);
-    const first = decision.switchTo;
+    const hasCustom = !!(state.generationModelCustom || '').trim();
+    const first = hasCustom ? null : decision.switchTo;
     if (first) {
         state.selectedModel = first.id;
         localStorage.setItem(`imagen_model_${state.provider}`, first.id);
@@ -54,7 +55,7 @@ function syncGenerationPickerConstraints() {
         renderCostEstimate();
         renderOrchestratorReadiness();
     }
-    if (decision.warnNoImg2img && !_warnedNoImg2img.has(state.provider)) {
+    if ((decision.warnNoImg2img || (hasCustom && state.orchestrator.enabled && !getGenerationModelConfig().supportsImageInput)) && !_warnedNoImg2img.has(state.provider)) {
         _warnedNoImg2img.add(state.provider);
         showToast('Selected provider has no model that accepts reference images; Orchestrator results will ignore Source/Reference images', 'warning');
     }
@@ -256,6 +257,8 @@ function switchProvider(newProviderId) {
     state.apiKey      = loadApiKeyForProvider(newProviderId);
     state.rememberKey = loadRememberKeyForProvider(newProviderId);
     state.selectedModel = loadSelectedModelForProvider(newProviderId);
+    state.generationModelCustom = loadCustomGenerationModel(newProviderId);
+    if (elements.generationModelCustom) elements.generationModelCustom.value = state.generationModelCustom;
 
     elements.apiKey.value = state.apiKey;
     elements.rememberKeyToggle.checked = state.rememberKey;
@@ -297,6 +300,18 @@ async function init() {
 
     if (elements.themeToggleBtn) {
         elements.themeToggleBtn.addEventListener('click', toggleTheme);
+    }
+
+    if (elements.generationModelCustom) {
+        elements.generationModelCustom.value = state.generationModelCustom || '';
+        elements.generationModelCustom.addEventListener('input', () => {
+            state.generationModelCustom = elements.generationModelCustom.value;
+            saveCustomGenerationModel(state.provider, state.generationModelCustom);
+            syncGenerationPickerConstraints();
+            renderModelInfoCard(getEffectiveGenerationModel(), elements.generationModelInfo, getGenerationModelConfig());
+            renderCostEstimate();
+            renderOrchestratorReadiness();
+        });
     }
 
     // Init provider toggle active state + key field label/placeholder
@@ -1149,9 +1164,9 @@ async function generateImages() {
             showToast('Upload both Source and Reference images before generating', 'error');
             return;
         }
-        const modelConfig = MODEL_CONFIGS[state.selectedModel];
+        const modelConfig = getGenerationModelConfig();
         if (!modelConfig?.supportsImageInput) {
-            showToast((modelConfig?.name || state.selectedModel) + " doesn't support image input — pick a model that supports img2img for Orchestrator Mode.", 'error');
+            showToast((modelConfig?.name || getEffectiveGenerationModel()) + " doesn't support image input — pick a model that supports img2img for Orchestrator Mode.", 'error');
             return;
         }
 
@@ -1187,9 +1202,9 @@ async function generateImages() {
         return;
     }
 
-    const modelConfig = MODEL_CONFIGS[state.selectedModel];
+    const modelConfig = getGenerationModelConfig();
     const currentReferences = state.references.length > 0 ? [...state.references] : [];
-    const currentModel = state.selectedModel;
+    const currentModel = getEffectiveGenerationModel();
     const currentSize = state.imageSize;
     const currentQuality = state.imageQuality;
     const currentAspectRatio = state.aspectRatio;

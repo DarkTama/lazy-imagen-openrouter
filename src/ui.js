@@ -2,7 +2,7 @@
  * Toast notifications, model info cards, sidebar, modal, prompt warnings.
  */
 
-import { state, MODEL_CONFIGS, MODEL_PROMPT_CHAR_LIMITS, DEFAULT_PROMPT_CHAR_LIMIT, PROMPT_WARN_THRESHOLD, ATTRIBUTE_LABELS } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PROMPT_CHAR_LIMITS, DEFAULT_PROMPT_CHAR_LIMIT, PROMPT_WARN_THRESHOLD, ATTRIBUTE_LABELS, getEffectiveGenerationModel } from './state.js';
 import { getAllProviders, getProvidersByCapability } from './providers.js';
 import { elements } from './elements.js';
 import { escapeHtml, formatPrice, speedGlyph, sanitizeImageUrl, formatUsd } from './utils.js';
@@ -68,7 +68,7 @@ export function renderModelInfoCard(modelId, target, meta) {
 }
 
 export function updateGeminiOptionsVisibility() {
-    const isGemini = state.selectedModel.includes('gemini');
+    const isGemini = getEffectiveGenerationModel().includes('gemini');
     elements.geminiOptions.style.display = isGemini ? 'flex' : 'none';
 }
 
@@ -79,7 +79,7 @@ export function updateGeminiOptionsVisibility() {
  * `approxImageCost` in MODEL_CONFIGS — hidden for models without one.
  */
 export function renderCostEstimate() {
-    const cfg = MODEL_CONFIGS[state.selectedModel];
+    const cfg = MODEL_CONFIGS[getEffectiveGenerationModel()];
     const count = state.imageCount || 1;
     const targets = [
         document.getElementById('costEstimate'),
@@ -108,7 +108,7 @@ export function renderCostEstimate() {
 }
 
 export function getPromptCharLimit() {
-    return MODEL_PROMPT_CHAR_LIMITS[state.selectedModel] || DEFAULT_PROMPT_CHAR_LIMIT;
+    return MODEL_PROMPT_CHAR_LIMITS[getEffectiveGenerationModel()] || DEFAULT_PROMPT_CHAR_LIMIT;
 }
 
 export function updatePromptLengthWarning(len) {

@@ -92,6 +92,7 @@ export function initElements() {
     elements.visionModelTrigger = document.getElementById('visionModelTrigger');
     elements.visionModelValue = document.getElementById('visionModelValue');
     elements.visionModelOptions = document.getElementById('visionModelOptions');
+    elements.generationModelCustom = document.getElementById('generationModelCustom');
     elements.visionModelCustom = document.getElementById('visionModelCustom');
     elements.visionModelChip = document.getElementById('visionModelChip');
     elements.owSubjectContextSection = document.getElementById('owSubjectContextSection');
