@@ -6,10 +6,9 @@
 export function pickImg2imgModel({ orchestratorEnabled, providerId, selectedModelId, modelConfigs = {}, liveImageModels = [], knownModels = [], allowlist = [] }) {
     if (!orchestratorEnabled) return { filter: false, switchTo: null, warnNoImg2img: false };
 
-    let pool = [...(liveImageModels || [])];
-    if (!pool.length) {
-        pool = (knownModels || []).filter(m => m.kind === 'image');
-    }
+    // Declared image models are authoritative; /models lists (esp. custom gateways) are unreliable.
+    let pool = (knownModels || []).filter(m => m.kind === 'image');
+    if (!pool.length) pool = [...(liveImageModels || [])];
     if (!pool.length && providerId === 'nanogpt') pool = [...(allowlist || [])];
     if (!pool.length && providerId === 'openrouter') {
         pool = Object.entries(modelConfigs)

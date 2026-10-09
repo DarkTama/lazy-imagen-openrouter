@@ -26,9 +26,18 @@ describe('pickImg2imgModel', () => {
         const r = pickImg2imgModel({ orchestratorEnabled: true, providerId: 'c', selectedModelId: 'txt', knownModels: [known[0]] });
         expect(r).toEqual({ filter: true, switchTo: null, warnNoImg2img: true });
     });
-    it('prefers live models over known', () => {
-        const r = pickImg2imgModel({ orchestratorEnabled: true, providerId: 'c', selectedModelId: 'x', liveImageModels: [{ id: 'live', supportsImageInput: true }], knownModels: known });
+    it('uses live models when no known image models declared', () => {
+        const r = pickImg2imgModel({ orchestratorEnabled: true, providerId: 'c', selectedModelId: 'x', liveImageModels: [{ id: 'live', supportsImageInput: true }], knownModels: [known[2]] });
         expect(r.switchTo.id).toBe('live');
+    });
+    const chat = [{ id: 'chat1', supportsImageInput: true }, { id: 'chat2', supportsImageInput: true }];
+    it('declared image models override unreliable live list (warn, no chat switch)', () => {
+        const r = pickImg2imgModel({ orchestratorEnabled: true, providerId: 'c', selectedModelId: 'img', liveImageModels: chat, knownModels: [{ id: 'img', kind: 'image', supportsImageInput: false }] });
+        expect(r).toEqual({ filter: true, switchTo: null, warnNoImg2img: true });
+    });
+    it('switches only to declared img2img image model, never live chat', () => {
+        const r = pickImg2imgModel({ orchestratorEnabled: true, providerId: 'c', selectedModelId: 'txt', liveImageModels: chat, knownModels: known });
+        expect(r.switchTo.id).toBe('img');
     });
     it('uses allowlist only for nanogpt', () => {
         const al = [{ id: 'al', supportsImageInput: true }];
