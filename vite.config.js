@@ -16,19 +16,21 @@ export default defineConfig(({ mode }) => {
         },
       }
     : undefined;
+  const desktop = mode === 'desktop';
   return {
   root: '.',
-  base: '/lazy-imagen-openrouter/',
+  base: desktop ? '/' : '/lazy-imagen-openrouter/',
+  ...(desktop && { clearScreen: false }),
   build: {
     outDir: 'dist',
     target: 'esnext',
   },
   server: {
-    open: true,
+    ...(desktop ? { port: 1420, strictPort: true } : { open: true }),
     ...(proxy && { proxy }),
   },
   ...(proxy && { preview: { proxy } }),
-  plugins: [
+  plugins: desktop ? [] : [
     VitePWA({
       registerType: 'autoUpdate',
       // 'auto' injects the registration script into the built index.html;

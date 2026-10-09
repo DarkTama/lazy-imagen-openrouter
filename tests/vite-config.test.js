@@ -23,3 +23,22 @@ describe('vite config nineguard proxy', () => {
     expect(cfg.preview?.proxy?.['/nineguard']).toBeUndefined();
   });
 });
+
+describe('vite config modes', () => {
+  const names = (cfg) => (cfg.plugins || []).flat(Infinity).map((p) => p && p.name).filter(Boolean);
+
+  it('desktop mode: base /, no PWA, port 1420', () => {
+    const cfg = configFn({ mode: 'desktop', command: 'build' });
+    expect(cfg.base).toBe('/');
+    expect(names(cfg).some((n) => n.startsWith('vite-plugin-pwa'))).toBe(false);
+    expect(cfg.server.port).toBe(1420);
+    expect(cfg.server.strictPort).toBe(true);
+    expect(cfg.clearScreen).toBe(false);
+  });
+
+  it('development mode: Pages base and PWA present', () => {
+    const cfg = run();
+    expect(cfg.base).toBe('/lazy-imagen-openrouter/');
+    expect(names(cfg).some((n) => n.startsWith('vite-plugin-pwa'))).toBe(true);
+  });
+});

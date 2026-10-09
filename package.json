@@ -11,9 +11,12 @@
     "test:watch": "vitest",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.js\" \"*.html\""
+    "format": "prettier --write \"src/**/*.js\" \"*.html\"",
+    "tauri": "tauri",
+    "build:desktop": "vite build --mode desktop"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "jsdom": "^25.0.0",
@@ -31,6 +34,7 @@
   "license": "MIT",
   "private": true,
   "dependencies": {
+    "@tauri-apps/api": "^2.12.2",
     "pica": "^9.0.1"
   }
 }
