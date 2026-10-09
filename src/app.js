@@ -13,6 +13,7 @@ import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthW
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
 import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl, rebuildOrchestratorModelPickers } from './orchestrator.js';
 import { createModelPicker } from './model-picker.js';
+import { pickImg2imgModel } from './generation-constraints.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { initHistory } from './history.js';
 import { initAccessibility } from './accessibility.js';
@@ -28,26 +29,34 @@ let _generationPicker = null;
  * provider state: when NanoGPT + orchestrator are both active, only img2img
  * models are shown. Auto-switches away from a txt2img model if needed.
  */
+const _warnedNoImg2img = new Set();
+
 function syncGenerationPickerConstraints() {
     if (!_generationPicker) return;
-    const needsImg2img = state.orchestrator.enabled && state.provider === 'nanogpt';
-    _generationPicker.setFilter('img2img', needsImg2img);
-    if (needsImg2img) {
-        const cfg = MODEL_CONFIGS[state.selectedModel];
-        if (!cfg?.supportsImageInput) {
-            const liveModels = state.fetchedModels?.[state.provider]?.image || [];
-            const pool = liveModels.length ? liveModels : SUBSCRIPTION_IMAGE_ALLOWLIST;
-            const first = pool.find(m => m.supportsImageInput);
-            if (first) {
-                state.selectedModel = first.id;
-                localStorage.setItem(`imagen_model_${state.provider}`, first.id);
-                if (elements.modelSelectValue) elements.modelSelectValue.textContent = first.name || first.id;
-                _generationPicker.syncSelected();
-                renderModelInfoCard(first.id, elements.generationModelInfo, MODEL_CONFIGS[first.id]);
-                renderCostEstimate();
-                renderOrchestratorReadiness();
-            }
-        }
+    const prov = getProvider(state.provider);
+    const decision = pickImg2imgModel({
+        orchestratorEnabled: !!state.orchestrator.enabled,
+        providerId: state.provider,
+        selectedModelId: state.selectedModel,
+        modelConfigs: MODEL_CONFIGS,
+        liveImageModels: state.fetchedModels?.[state.provider]?.image || [],
+        knownModels: prov?.knownModels || [],
+        allowlist: SUBSCRIPTION_IMAGE_ALLOWLIST,
+    });
+    _generationPicker.setFilter('img2img', decision.filter);
+    const first = decision.switchTo;
+    if (first) {
+        state.selectedModel = first.id;
+        localStorage.setItem(`imagen_model_${state.provider}`, first.id);
+        if (elements.modelSelectValue) elements.modelSelectValue.textContent = first.name || first.id;
+        _generationPicker.syncSelected();
+        renderModelInfoCard(first.id, elements.generationModelInfo, MODEL_CONFIGS[first.id]);
+        renderCostEstimate();
+        renderOrchestratorReadiness();
+    }
+    if (decision.warnNoImg2img && !_warnedNoImg2img.has(state.provider)) {
+        _warnedNoImg2img.add(state.provider);
+        showToast('Selected provider has no model that accepts reference images; Orchestrator results will ignore Source/Reference images', 'warning');
     }
 }
 
