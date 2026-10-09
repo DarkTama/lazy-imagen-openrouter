@@ -518,7 +518,7 @@ async function runAiAssist() {
         showToast('AI assist uses an OpenRouter model — switch to OpenRouter in the sidebar', 'error');
         return;
     }
-    if (!state.apiKey) {
+    if (!state.hasKey) {
         showToast('Save your OpenRouter API key first', 'error');
         return;
     }

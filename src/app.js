@@ -6,6 +6,7 @@
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
+import { keyStore } from './key-store.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate, templateFormValues, mergeTemplateIntoSave } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
@@ -289,6 +290,7 @@ function switchProvider(newProviderId) {
     localStorage.setItem('imagen_provider', newProviderId);
 
     state.apiKey      = loadApiKeyForProvider(newProviderId);
+    state.hasKey      = Boolean(state.apiKey);
     state.rememberKey = loadRememberKeyForProvider(newProviderId);
     state.selectedModel = loadSelectedModelForProvider(newProviderId);
     state.generationModelCustom = loadCustomGenerationModel(newProviderId);
@@ -537,42 +539,29 @@ function setupEventListeners() {
         });
     }
 
-    elements.saveApiKey.addEventListener('click', () => {
-        const { lsKey, ssKey } = providerKeyNames(state.provider);
+    elements.saveApiKey.addEventListener('click', async () => {
         state.apiKey = elements.apiKey.value.trim();
-        if (state.rememberKey) {
-            localStorage.setItem(lsKey, state.apiKey);
-            sessionStorage.removeItem(ssKey);
-        } else {
-            sessionStorage.setItem(ssKey, state.apiKey);
-            localStorage.removeItem(lsKey);
-        }
+        state.hasKey = Boolean(state.apiKey);
+        await keyStore.set(state.provider, state.apiKey, { remember: state.rememberKey });
         showToast('API key saved!', 'success');
         renderOrchestratorReadiness();
         if (isMobileLayout()) closeSidebar();
     });
 
-    elements.rememberKeyToggle.addEventListener('change', () => {
-        const { lsKey, ssKey, rememberKey } = providerKeyNames(state.provider);
+    elements.rememberKeyToggle.addEventListener('change', async () => {
+        const { rememberKey } = providerKeyNames(state.provider);
         state.rememberKey = elements.rememberKeyToggle.checked;
         localStorage.setItem(rememberKey, state.rememberKey ? 'true' : 'false');
         if (state.apiKey) {
-            if (state.rememberKey) {
-                localStorage.setItem(lsKey, state.apiKey);
-                sessionStorage.removeItem(ssKey);
-            } else {
-                sessionStorage.setItem(ssKey, state.apiKey);
-                localStorage.removeItem(lsKey);
-            }
+            await keyStore.set(state.provider, state.apiKey, { remember: state.rememberKey });
         }
     });
 
-    elements.clearApiKey.addEventListener('click', () => {
+    elements.clearApiKey.addEventListener('click', async () => {
         if (confirm('Are you sure you want to clear your API key?')) {
-            const { lsKey, ssKey } = providerKeyNames(state.provider);
-            localStorage.removeItem(lsKey);
-            sessionStorage.removeItem(ssKey);
+            await keyStore.remove(state.provider);
             state.apiKey = '';
+            state.hasKey = false;
             elements.apiKey.value = '';
             showToast('API key cleared', 'success');
             renderOrchestratorReadiness();
@@ -650,7 +639,7 @@ function setupEventListeners() {
     }
 
     if (elements.providerEditForm) {
-        elements.providerEditForm.addEventListener('submit', (e) => {
+        elements.providerEditForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = elements.providerFormId.value || undefined;
             const name = elements.providerFormName.value.trim();
@@ -672,7 +661,8 @@ function setupEventListeners() {
             ));
 
             if (apiKey) {
-                localStorage.setItem(`imagen_api_key_${saved.id}`, apiKey);
+                await keyStore.set(saved.id, apiKey, { remember: true });
+                if (saved.id === state.provider) { state.apiKey = apiKey; state.hasKey = true; }
             }
 
             showToast(`Provider "${saved.name}" saved`, 'success');
@@ -715,7 +705,7 @@ function setupEventListeners() {
 
             // If it's an existing saved provider:
             if (id) {
-                if (key) localStorage.setItem(`imagen_api_key_${id}`, key);
+                if (key) await keyStore.set(id, key, { remember: true });
                 const res = await testProviderConnection(id);
                 if (res.ok) {
                     elements.providerTestStatus.className = 'provider-test-status success';
@@ -1192,7 +1182,7 @@ function clearAllReferences() {
 
 // ===== Image Generation =====
 async function generateImages() {
-    if (!state.apiKey) {
+    if (!state.hasKey) {
         showToast(`Please enter your ${getProvider(state.provider).label} API key`, 'error');
         return;
     }

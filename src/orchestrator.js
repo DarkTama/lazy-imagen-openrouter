@@ -219,7 +219,7 @@ export function renderOrchestratorReadiness() {
     const items = [
         { label: 'Source', ok: Boolean(o.sourceImage) },
         { label: 'Reference', ok: Boolean(o.referenceImage) },
-        { label: 'API key', ok: Boolean(state.apiKey) },
+        { label: 'API key', ok: Boolean(state.hasKey) },
         { label: imgCapableLabel, ok: supportsImg }
     ];
     strip.innerHTML = items.map(item =>
@@ -939,7 +939,7 @@ export function setupOrchestratorEventListeners(generateImages) {
         e.stopPropagation();
         const rProv = o.researchProvider || 'openrouter';
         const apiKey = state.apiKey; // or loaded per provider
-        if (!apiKey) {
+        if (!state.hasKey) {
             showToast('Save your API key first', 'error');
             return;
         }
@@ -1088,7 +1088,7 @@ export async function assembleOrchestratorPrompt() {
     // still matches this image pair + model, skip the API entirely.
     const cached = getValidVisionCache();
 
-    if (!cached && !state.apiKey) {
+    if (!cached && !state.hasKey) {
         showToast('Save your API key first', 'error');
         return null;
     }

@@ -3,6 +3,7 @@
  */
 
 import ImagenDB from './db.js';
+import { keyStore } from './key-store.js';
 import { showToast } from './utils.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 
@@ -10,9 +11,8 @@ import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 // Exported so app.js can call them when switching providers.
 
 export function loadApiKeyForProvider(providerId) {
-    const lsKey = `imagen_api_key_${providerId}`;
-    const ssKey = `imagen_api_key_session_${providerId}`;
-    return localStorage.getItem(lsKey) || sessionStorage.getItem(ssKey) || '';
+    // Sync web-only read via keyStore (returns '' on desktop). Replaced in Task 2.
+    return keyStore.getSync(providerId) || '';
 }
 
 export function loadRememberKeyForProvider(providerId) {
@@ -352,6 +352,7 @@ export const state = {
         this.generationProvider = val;
     },
     apiKey: loadApiKeyForProvider(_activeGenerationProvider),
+    hasKey: Boolean(loadApiKeyForProvider(_activeGenerationProvider)),
     rememberKey: loadRememberKeyForProvider(_activeGenerationProvider),
     selectedModel: loadSelectedModelForProvider(_activeGenerationProvider),
     generationModelCustom: loadCustomGenerationModel(_activeGenerationProvider),
