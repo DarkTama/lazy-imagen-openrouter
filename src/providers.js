@@ -190,6 +190,39 @@ export function getProvidersByCapability(capability) {
     return all.filter(p => p.capabilities && p.capabilities[capability] === true);
 }
 
+const NINEGUARD_TEMPLATE = {
+    name: 'NineGuard',
+    imageStrategy: 'chat-modalities',
+    capabilities: { imageGen: true, chatVision: true },
+    imageConfigStyle: 'none',
+    supportsAspectRatio: false,
+    defaultVisionModel: '9router/ag/gemini-3.8-flash-low',
+    knownModels: [
+        { id: '9router/ag/gemini-3.8-flash-low', name: 'Gemini 3.8 Flash Low', kind: 'vision' },
+        { id: '9router/ag/gemini-3.7-flash-low', name: 'Gemini 3.7 Flash Low', kind: 'vision' },
+        { id: '9router/ag/gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image (text-to-image, 1:1)', kind: 'image',
+            supportsImageInput: false, notes: 'NineGuard currently drops input images; output fixed 1024×1024.' }
+    ],
+    notice: 'Browser builds need the Vite proxy (/nineguard) or a NineGuard with CORS + https. Desktop build connects directly.'
+};
+
+/** One-click presets for the Add Custom Provider form. Base is computed at access time. */
+export const PROVIDER_TEMPLATES = {
+    get nineguard() {
+        return {
+            ...NINEGUARD_TEMPLATE,
+            // Absolute: #providerFormBase is <input type="url">, relative paths fail validation.
+            base: import.meta.env?.DEV ? `${location.origin}/nineguard/v1` : '',
+            capabilities: { ...NINEGUARD_TEMPLATE.capabilities },
+            knownModels: NINEGUARD_TEMPLATE.knownModels.map(m => ({ ...m }))
+        };
+    }
+};
+
+export function getProviderTemplate(key) {
+    return PROVIDER_TEMPLATES[key] || null;
+}
+
 export function saveCustomProvider(config) {
     const customList = loadCustomProviders();
     const id = config.id || `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -205,6 +238,7 @@ export function saveCustomProvider(config) {
         keyLabel: `${name} API Key`,
         keyNote: 'Your key is stored locally in this browser.',
         defaultModel: config.defaultModel || '',
+        ...(config.defaultVisionModel ? { defaultVisionModel: String(config.defaultVisionModel) } : {}),
         imageStrategy: config.imageStrategy || 'images-endpoint',
         imagesUrl: config.imagesUrl || `${base}/images/generations`,
         modelsUrl: config.modelsUrl || `${base}/models`,

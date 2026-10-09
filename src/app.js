@@ -6,10 +6,10 @@
 import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
-import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider } from './providers.js';
+import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
-import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal, renderGenerationProviderSelect, activateFocusTrap } from './ui.js';
+import { renderModelInfoCard, updateGeminiOptionsVisibility, updatePromptLengthWarning, createSidebarOverlay, openSidebar, closeSidebar, isMobileLayout, openModal, closeModal, renderCostEstimate, navigateModal, renderGenerationProviderSelect, activateFocusTrap, applyAspectSupport } from './ui.js';
 import { renderGallery, addLoadingPlaceholders, removeOnePlaceholder, prependImageCard, updateGalleryCount, initGalleryFilters, toggleFavorite } from './gallery.js';
 import { setupOrchestrator, setupOrchestratorEventListeners, applyOrchestratorMode, renderVisionModelChip, assembleOrchestratorPrompt, snapshotOrchestrator, restoreOrchestratorFromSnapshot, setGenerateButtonLoading, hideOrchestratorPanel, showOrchestratorError, hydrateOrchestratorImages, renderOrchestratorReadiness, setRoleImageFromUrl, rebuildOrchestratorModelPickers } from './orchestrator.js';
 import { createModelPicker } from './model-picker.js';
@@ -202,8 +202,35 @@ function renderProviderModalList() {
     });
 }
 
+// Non-form fields from a clicked template, merged on save.
+let _pendingTemplate = null;
+
+function showTemplateNotice(text) {
+    if (elements.providerTemplateNotice) {
+        elements.providerTemplateNotice.textContent = text || '';
+        elements.providerTemplateNotice.hidden = !text;
+    }
+    if (elements.providerCorsNotice) elements.providerCorsNotice.hidden = !!text;
+}
+
+function applyProviderTemplate(key) {
+    const t = getProviderTemplate(key);
+    if (!t || !elements.providerEditForm) return;
+    resetProviderForm();
+    _pendingTemplate = t;
+    elements.providerFormName.value = t.name;
+    elements.providerFormBase.value = t.base;
+    elements.providerFormKey.value = '';
+    elements.providerCapImage.checked = !!t.capabilities.imageGen;
+    elements.providerCapChat.checked = !!t.capabilities.chatVision;
+    elements.providerFormStrategy.value = t.imageStrategy;
+    showTemplateNotice(t.notice);
+}
+
 function selectProviderInModal(prov) {
     if (!elements.providerEditForm) return;
+    _pendingTemplate = null;
+    showTemplateNotice('');
     const isBuiltIn = isBuiltInProvider(prov.id);
     elements.providerFormId.value = prov.id;
     elements.providerFormTitle.textContent = isBuiltIn ? `View Provider (${prov.name})` : 'Edit Custom Provider';
@@ -226,6 +253,8 @@ function selectProviderInModal(prov) {
 
 function resetProviderForm() {
     if (!elements.providerEditForm) return;
+    _pendingTemplate = null;
+    showTemplateNotice('');
     elements.providerFormId.value = '';
     elements.providerFormTitle.textContent = 'Add Custom Provider';
     elements.providerFormName.value = '';
@@ -321,6 +350,7 @@ async function init() {
     // Init provider toggle active state + key field label/placeholder
     applyProviderUI(state.provider);
     rebuildAllProviderSelectors();
+    applyAspectSupport(getProvider(state.generationProvider || state.provider));
 
     elements.apiKey.value = state.apiKey;
     elements.rememberKeyToggle.checked = state.rememberKey;
@@ -602,6 +632,9 @@ function setupEventListeners() {
     if (elements.providerModalOverlay) {
         elements.providerModalOverlay.addEventListener('click', closeProviderModal);
     }
+    if (elements.providerTemplateNineguard) {
+        elements.providerTemplateNineguard.addEventListener('click', () => applyProviderTemplate('nineguard'));
+    }
     if (elements.providerAddNewBtn) {
         elements.providerAddNewBtn.addEventListener('click', resetProviderForm);
     }
@@ -611,6 +644,7 @@ function setupEventListeners() {
             const chosen = e.target.value;
             state.generationProvider = chosen;
             switchProvider(chosen);
+            applyAspectSupport(getProvider(chosen));
         });
     }
 
@@ -630,7 +664,18 @@ function setupEventListeners() {
                 return;
             }
 
+            // Preserve non-form fields: from pending template, else from the existing provider on edit.
+            const extraSrc = _pendingTemplate || (id ? getProvider(id) : null);
+            const extras = extraSrc ? {
+                imageConfigStyle: extraSrc.imageConfigStyle,
+                supportsAspectRatio: extraSrc.supportsAspectRatio,
+                knownModels: extraSrc.knownModels,
+                defaultVisionModel: extraSrc.defaultVisionModel,
+                defaultModel: extraSrc.defaultModel
+            } : {};
+
             const saved = saveCustomProvider({
+                ...extras,
                 id,
                 name,
                 base,

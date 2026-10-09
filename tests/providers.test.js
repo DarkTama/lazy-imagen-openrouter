@@ -89,3 +89,63 @@ describe('custom provider image capabilities', () => {
         expect(f.knownModels).toEqual([]);
     });
 });
+
+import { PROVIDER_TEMPLATES, getProviderTemplate } from '../src/providers.js';
+import { vi, afterEach } from 'vitest';
+import { applyAspectSupport } from '../src/ui.js';
+import { state } from '../src/state.js';
+
+describe('NineGuard template', () => {
+    beforeEach(() => localStorage.clear());
+    afterEach(() => vi.unstubAllEnvs());
+
+    it('has expected static fields and no key/host', () => {
+        const t = PROVIDER_TEMPLATES.nineguard;
+        expect(t.name).toBe('NineGuard');
+        expect(t.imageStrategy).toBe('chat-modalities');
+        expect(t.imageConfigStyle).toBe('none');
+        expect(t.supportsAspectRatio).toBe(false);
+        expect(t.defaultVisionModel).toBe('9router/ag/gemini-3.8-flash-low');
+        expect(t.knownModels).toHaveLength(3);
+        expect(t.notice).toContain('Vite proxy');
+    });
+
+    it('base is absolute in DEV and empty otherwise', () => {
+        vi.stubEnv('DEV', true);
+        expect(getProviderTemplate('nineguard').base).toBe(`${location.origin}/nineguard/v1`);
+        vi.stubEnv('DEV', false);
+        expect(getProviderTemplate('nineguard').base).toBe('');
+    });
+
+    it('save round-trip persists knownModels, supportsAspectRatio, defaultVisionModel', () => {
+        const t = getProviderTemplate('nineguard');
+        const saved = saveCustomProvider({ ...t, base: 'https://example.invalid/v1' });
+        const loaded = getProvider(saved.id);
+        expect(loaded.supportsAspectRatio).toBe(false);
+        expect(loaded.imageConfigStyle).toBe('none');
+        expect(loaded.knownModels).toHaveLength(3);
+        expect(loaded.knownModels[2].supportsImageInput).toBe(false);
+        expect(loaded.defaultVisionModel).toBe(t.defaultVisionModel);
+    });
+});
+
+describe('applyAspectSupport', () => {
+    beforeEach(() => {
+        document.body.innerHTML = `<button class="btn-aspect active" data-ratio="1:1"></button><button class="btn-aspect" data-ratio="16:9"></button><small id="aspectRatioHint" hidden></small>`;
+        state.aspectRatio = '16:9';
+    });
+
+    it('locks to 1:1 when unsupported', () => {
+        expect(applyAspectSupport({ supportsAspectRatio: false })).toBe(true);
+        expect([...document.querySelectorAll('.btn-aspect')].every(b => b.disabled)).toBe(true);
+        expect(state.aspectRatio).toBe('1:1');
+        expect(document.getElementById('aspectRatioHint').hidden).toBe(false);
+    });
+
+    it('re-enables when supported', () => {
+        applyAspectSupport({ supportsAspectRatio: false });
+        applyAspectSupport({ supportsAspectRatio: true });
+        expect([...document.querySelectorAll('.btn-aspect')].some(b => b.disabled)).toBe(false);
+        expect(document.getElementById('aspectRatioHint').hidden).toBe(true);
+    });
+});

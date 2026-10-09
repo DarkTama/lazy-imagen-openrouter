@@ -904,6 +904,14 @@ export function setupOrchestratorEventListeners(generateImages) {
     if (elements.visionProviderSelect) {
         elements.visionProviderSelect.addEventListener('change', () => {
             o.visionProvider = elements.visionProviderSelect.value;
+            const vp = getProvider(o.visionProvider);
+            if (vp?.defaultVisionModel) {
+                const known = [
+                    ...(vp.knownModels || []).filter(m => !m.kind || m.kind === 'vision'),
+                    ...(state.fetchedModels[o.visionProvider]?.vision || [])
+                ];
+                if (!known.some(m => m.id === o.visionModel)) o.visionModel = vp.defaultVisionModel;
+            }
             saveOrchestratorState();
             rebuildOrchestratorModelPickers();
         });

@@ -28,6 +28,9 @@ export function initElements() {
     elements.providerCapImage = document.getElementById('providerCapImage');
     elements.providerCapChat = document.getElementById('providerCapChat');
     elements.providerFormStrategy = document.getElementById('providerFormStrategy');
+    elements.providerTemplateNineguard = document.getElementById('providerTemplateNineguard');
+    elements.providerTemplateNotice = document.getElementById('providerTemplateNotice');
+    elements.providerCorsNotice = document.getElementById('providerCorsNotice');
     elements.providerTestBtn = document.getElementById('providerTestBtn');
     elements.providerTestStatus = document.getElementById('providerTestStatus');
     elements.providerDeleteBtn = document.getElementById('providerDeleteBtn');

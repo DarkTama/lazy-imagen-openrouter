@@ -129,6 +129,7 @@
                     <button class="btn-aspect" data-ratio="3:4">3:4</button>
                     <button class="btn-aspect" data-ratio="3:2">3:2</button>
                 </div>
+                <small class="hint" id="aspectRatioHint" hidden>1:1 only for this provider</small>
             </div>
 
             <!-- Number of Images -->
@@ -662,6 +663,11 @@
                     <form id="providerEditForm" class="provider-form">
                         <input type="hidden" id="providerFormId">
                         <h3 id="providerFormTitle">Add Custom Provider</h3>
+
+                        <div class="form-group provider-templates-row">
+                            <label>Templates</label>
+                            <button type="button" class="btn btn-ghost-sm" id="providerTemplateNineguard">Use NineGuard template</button>
+                        </div>
                         
                         <div class="form-group">
                             <label for="providerFormName">Provider Name</label>
@@ -701,6 +707,7 @@
                             </select>
                         </div>
 
+                        <div class="cors-notice" id="providerTemplateNotice" hidden></div>
                         <div class="cors-notice" id="providerCorsNotice">
                             <strong>Local Server CORS Tip:</strong>
                             <p>If connecting to Ollama, start it with CORS allowed:</p>

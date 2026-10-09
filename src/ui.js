@@ -280,3 +280,22 @@ export function closeModal() {
         _releaseFocusTrap = null;
     }
 }
+
+/**
+ * Disable aspect-ratio buttons (forcing 1:1) when the provider doesn't support them.
+ * Returns true if aspect ratio is locked.
+ */
+export function applyAspectSupport(prov) {
+    const locked = !!prov && prov.supportsAspectRatio === false;
+    document.querySelectorAll('.btn-aspect').forEach(b => {
+        b.disabled = locked;
+        if (locked) b.classList.toggle('active', b.dataset.ratio === '1:1');
+    });
+    if (locked && state.aspectRatio !== '1:1') {
+        state.aspectRatio = '1:1';
+        localStorage.setItem('imagen_aspect_ratio', '1:1');
+    }
+    const hint = document.getElementById('aspectRatioHint');
+    if (hint) hint.hidden = !locked;
+    return locked;
+}

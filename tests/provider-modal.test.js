@@ -23,3 +23,13 @@ describe('Provider modal DOM and style structure', () => {
     expect(css).toMatch(/\.provider-modal-dialog\s*\{[^}]*z-index:\s*10/);
   });
 });
+
+describe('NineGuard template markup', () => {
+  it('has template button, notice and aspect hint', () => {
+    const html = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+    expect(html).toContain('id="providerTemplateNineguard"');
+    expect(html).toContain('id="providerTemplateNotice"');
+    expect(html).toContain('id="aspectRatioHint"');
+    expect(html).toContain('1:1 only for this provider');
+  });
+});
