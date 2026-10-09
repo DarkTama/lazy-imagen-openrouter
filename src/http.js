@@ -81,3 +81,12 @@ export function providerRequest(providerId, url, init = {}, { keyOverride } = {}
     if (key) headers.Authorization = `Bearer ${key}`;
     return fetch(url, { ...init, headers });
 }
+
+/**
+ * Ad-hoc request (pre-save provider test). On desktop ALWAYS via Rust
+ * provider_fetch (no CORS / mixed-content limits), even without a key.
+ */
+export function adHocRequest(url, init = {}, { key } = {}) {
+    if (isDesktop()) return desktopRequest(null, url, init, key || null);
+    return providerRequest(null, url, init, { keyOverride: key });
+}

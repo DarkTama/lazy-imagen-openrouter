@@ -29,6 +29,8 @@ pub(crate) struct Prepared {
 
 pub fn build_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
+        // reqwest strips Authorization (and other sensitive headers) on cross-host redirects.
+        .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(Duration::from_secs(180))
         .connect_timeout(Duration::from_secs(15))
         .build()

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
-import { providerRequest } from '../src/http.js';
+import { providerRequest, adHocRequest } from '../src/http.js';
 
 describe('providerRequest (desktop)', () => {
     beforeEach(() => {
@@ -70,5 +70,22 @@ describe('providerRequest (desktop)', () => {
         await providerRequest(null, 'https://pub/x');
         expect(invoke).not.toHaveBeenCalled();
         expect(fetch).toHaveBeenCalled();
+    });
+});
+
+describe('adHocRequest (desktop)', () => {
+    beforeEach(() => { window.__TAURI_INTERNALS__ = {}; invoke.mockReset(); globalThis.fetch = vi.fn(); });
+    afterEach(() => { delete window.__TAURI_INTERNALS__; delete globalThis.fetch; });
+
+    it('uses provider_fetch even with no key', async () => {
+        invoke.mockResolvedValue({ status: 200, headers: {}, body: '{}' });
+        const res = await adHocRequest('http://x/models', {}, { key: '' });
+        expect(res.ok).toBe(true);
+        expect(invoke).toHaveBeenCalledTimes(1);
+        const [cmd, args] = invoke.mock.calls[0];
+        expect(cmd).toBe('provider_fetch');
+        expect(args.providerId).toBeNull();
+        expect(args.keyOverride).toBeNull();
+        expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 });

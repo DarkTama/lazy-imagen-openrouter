@@ -7,7 +7,7 @@ import ImagenDB from './db.js';
 import { elements, initElements } from './elements.js';
 import { state, saveOrchestratorState, MODEL_CONFIGS, MAX_CONCURRENT_GENERATIONS, MODEL_LIST_CACHE_KEY_PREFIX, loadApiKeyForProvider, loadRememberKeyForProvider, loadSelectedModelForProvider, loadCustomGenerationModel, saveCustomGenerationModel, getEffectiveGenerationModel, getGenerationModelConfig } from './state.js';
 import { keyStore, isDesktop, migrateWebKeysToKeyring } from './key-store.js';
-import { providerRequest } from './http.js';
+import { providerRequest, adHocRequest } from './http.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider, getAllProviders, getProvidersByCapability, saveCustomProvider, deleteCustomProvider, isBuiltInProvider, getProviderTemplate, templateFormValues, mergeTemplateIntoSave } from './providers.js';
 import { ApiError, generateSingleImage, fetchModelPricing, fetchImageModels, fetchChatModels, runWithConcurrency, testProviderConnection } from './api.js';
 import { escapeHtml, sanitizeImageUrl, showToast, getImageExtension, copyImageToClipboard } from './utils.js';
@@ -293,6 +293,20 @@ function resetProviderForm() {
  * Switch the active provider: persist the change, reload the key/model,
  * rebuild the picker, and update all UI that depends on the provider.
  */
+let keychainWarned = false;
+async function resolveHasKey(providerId, apiKey) {
+    if (!isDesktop()) return Boolean(apiKey);
+    try {
+        return await keyStore.has(providerId);
+    } catch (err) {
+        if (!keychainWarned) {
+            keychainWarned = true;
+            showToast('OS keychain unavailable: ' + String(err), 'error');
+        }
+        return false;
+    }
+}
+
 async function switchProvider(newProviderId) {
     if (newProviderId === state.provider) return;
 
@@ -303,7 +317,7 @@ async function switchProvider(newProviderId) {
     localStorage.setItem('imagen_provider', newProviderId);
 
     state.apiKey      = loadApiKeyForProvider(newProviderId);
-    state.hasKey      = isDesktop() ? await keyStore.has(newProviderId) : Boolean(state.apiKey);
+    state.hasKey      = await resolveHasKey(newProviderId, state.apiKey);
     state.rememberKey = loadRememberKeyForProvider(newProviderId);
     state.selectedModel = loadSelectedModelForProvider(newProviderId);
     state.generationModelCustom = loadCustomGenerationModel(newProviderId);
@@ -347,7 +361,7 @@ async function init() {
     initElements();
     if (isDesktop()) {
         await migrateWebKeysToKeyring();
-        state.hasKey = await keyStore.has(state.provider);
+        state.hasKey = await resolveHasKey(state.provider, '');
     }
     initTheme();
 
@@ -602,15 +616,15 @@ function setupEventListeners() {
     });
 
     elements.testApiKey.addEventListener('click', async () => {
-        const key = elements.apiKey.value.trim() || state.apiKey;
-        if (!key) { showToast('Enter an API key to test', 'error'); return; }
+        const typed = elements.apiKey.value.trim();
+        if (!typed && !state.hasKey) { showToast('Enter an API key to test', 'error'); return; }
         const btn = elements.testApiKey;
         btn.disabled = true;
         btn.textContent = 'Testing…';
         try {
             const prov = getProvider(state.provider);
             const testUrl = prov.modelsUrl || prov.imageModelsUrl;
-            const res = await providerRequest(state.provider, testUrl, { headers: prov.headers('') }, { keyOverride: key });
+            const res = await providerRequest(state.provider, testUrl, { headers: prov.headers('') }, typed ? { keyOverride: typed } : {});
             if (res.ok) {
                 showToast(`${prov.label} connection successful — API key is valid`, 'success');
             } else {
@@ -666,7 +680,11 @@ function setupEventListeners() {
         elements.generationProviderSelect.addEventListener('change', async (e) => {
             const chosen = e.target.value;
             state.generationProvider = chosen;
-            await switchProvider(chosen);
+            try {
+                await switchProvider(chosen);
+            } catch (err) {
+                showToast('Provider switch failed: ' + String(err), 'error');
+            }
             applyAspectSupport(getProvider(chosen));
         });
     }
@@ -755,7 +773,7 @@ function setupEventListeners() {
             } else {
                 // Ad-hoc test before saving
                 try {
-                    const resp = await providerRequest(null, `${base}/models`, {}, { keyOverride: key });
+                    const resp = await adHocRequest(`${base}/models`, {}, { key });
                     if (resp.ok) {
                         elements.providerTestStatus.className = 'provider-test-status success';
                         elements.providerTestStatus.textContent = 'Endpoint reachable!';

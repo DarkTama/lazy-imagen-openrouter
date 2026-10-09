@@ -938,7 +938,6 @@ export function setupOrchestratorEventListeners(generateImages) {
         e.preventDefault();
         e.stopPropagation();
         const rProv = o.researchProvider || 'openrouter';
-        const apiKey = state.apiKey; // or loaded per provider
         if (!state.hasKey) {
             showToast('Save your API key first', 'error');
             return;

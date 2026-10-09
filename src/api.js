@@ -3,7 +3,7 @@
  * All calls (generation, vision, research) use the active provider's endpoint and key.
  */
 
-import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS, loadApiKeyForProvider, getEffectiveGenerationModel } from './state.js';
+import { state, MODEL_CONFIGS, MODEL_PRICING_CACHE_KEY, MODEL_PRICING_TTL_MS, MODEL_LIST_CACHE_KEY_PREFIX, MODEL_LIST_TTL_MS, MAX_CONCURRENT_GENERATIONS, VISION_MODELS, getEffectiveGenerationModel } from './state.js';
 import { SUBSCRIPTION_IMAGE_ALLOWLIST, getProvider } from './providers.js';
 import { looksLikeRefusal, compressDataUri } from './utils.js';
 import { retryWithBackoff } from './retry.js';
