@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { assemblePrompt, isVisionCacheValid } from '../src/orchestrator.js';
+import { ANALYSIS_VERSION } from '../src/state.js';
 
 describe('isVisionCacheValid', () => {
-  const cache = { srcFp: 'src1', refFp: 'ref1', model: 'google/gemini-2.5-flash', analysis: { source_char: 'x' } };
+  const cache = { srcFp: 'src1', refFp: 'ref1', model: 'google/gemini-2.5-flash', version: ANALYSIS_VERSION, analysis: { source_char: 'x' } };
 
   it('matches when fingerprints and model agree', () => {
     expect(isVisionCacheValid(cache, 'src1', 'ref1', 'google/gemini-2.5-flash')).toBe(true);
@@ -18,6 +19,10 @@ describe('isVisionCacheValid', () => {
   });
 
   it('rejects missing or analysis-less caches', () => {
+    const old = { srcFp: 's', refFp: 'r', model: 'm', version: '1', analysis: { source_char: 'x' } };
+    expect(isVisionCacheValid(old, 's', 'r', 'm', '2')).toBe(false);
+    const legacy = { srcFp: 's', refFp: 'r', model: 'm', analysis: { source_char: 'x' } };
+    expect(isVisionCacheValid(legacy, 's', 'r', 'm', '2')).toBe(false);
     expect(isVisionCacheValid(null, 'src1', 'ref1', 'm')).toBe(false);
     expect(isVisionCacheValid({ srcFp: 'src1', refFp: 'ref1', model: 'm' }, 'src1', 'ref1', 'm')).toBe(false);
   });

@@ -2,7 +2,7 @@
  * Orchestrator mode logic.
  */
 
-import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES } from './state.js';
+import { state, saveOrchestratorState, ORCHESTRATOR_DEFAULTS, ATTRIBUTE_LABELS, ATTRIBUTE_PHRASING, ATTRIBUTE_KEYS, VISION_MODELS, VISION_MODELS_BY_ID, RESEARCH_MODELS, MODEL_CONFIGS, LARGE_IMAGE_THRESHOLD_BYTES, ANALYSIS_VERSION } from './state.js';
 import { getProvidersByCapability, getProvider } from './providers.js';
 import { createModelPicker } from './model-picker.js';
 import { elements } from './elements.js';
@@ -251,8 +251,8 @@ function saveVisionCache() {
 }
 
 /** Pure validity check — exported for tests. */
-export function isVisionCacheValid(cache, srcFp, refFp, model) {
-    return Boolean(cache && cache.analysis && cache.srcFp === srcFp && cache.refFp === refFp && cache.model === model);
+export function isVisionCacheValid(cache, srcFp, refFp, model, version = ANALYSIS_VERSION) {
+    return Boolean(cache && cache.analysis && cache.srcFp === srcFp && cache.refFp === refFp && cache.model === model && cache.version === version);
 }
 
 function getValidVisionCache() {
@@ -1093,6 +1093,7 @@ export async function assembleOrchestratorPrompt() {
                 srcFp: imageFingerprint(o.sourceImage),
                 refFp: imageFingerprint(o.referenceImage),
                 model: visionModel,
+                version: ANALYSIS_VERSION,
                 analysis: vision
             };
             saveVisionCache();
