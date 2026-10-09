@@ -3,6 +3,25 @@ import { classifyError } from '../src/orchestrator.js';
 import { extractImageFromMessage, runVisionAnalysis } from '../src/api.js';
 
 describe('extractImageFromMessage', () => {
+  it('reads a markdown data-URI image in string content', () => {
+    const m = { content: '\n![image](data:image/jpeg;base64,/9j/AAA=)' };
+    expect(extractImageFromMessage(m)).toBe('data:image/jpeg;base64,/9j/AAA=');
+  });
+  it('reads a markdown https image in string content', () => {
+    expect(extractImageFromMessage({ content: 'Here: ![x](https://cdn.example/a.png) done' })).toBe('https://cdn.example/a.png');
+  });
+  it('reads markdown image inside a text part of array content', () => {
+    expect(extractImageFromMessage({ content: [{ type: 'text', text: '![i](data:image/png;base64,QQ==)' }] })).toBe('data:image/png;base64,QQ==');
+  });
+  it('ignores non-image markdown links', () => {
+    expect(extractImageFromMessage({ content: '[docs](https://x.y)' })).toBeNull();
+  });
+  it('handles multi-MB base64 quickly', () => {
+    const big = 'A'.repeat(5000000);
+    const t0 = Date.now();
+    expect(extractImageFromMessage({ content: `![image](data:image/png;base64,${big})` })).toContain(big.slice(0, 10));
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
   it('reads message.images with image_url shape', () => {
     expect(extractImageFromMessage({
       images: [{ image_url: { url: 'data:image/png;base64,AAA' } }],

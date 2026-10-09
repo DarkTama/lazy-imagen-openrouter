@@ -220,6 +220,14 @@ export async function researchSubject(subjectText, modelId, providerId = null) {
     return text.trim();
 }
 
+const MD_IMAGE_RE = /!\[[^\]]*\]\(\s*(data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s)]+)\s*\)/i;
+
+function findMarkdownImage(text) {
+    if (typeof text !== 'string') return null;
+    const m = MD_IMAGE_RE.exec(text);
+    return m ? m[1] : null;
+}
+
 /**
  * Pull an image (data URI or URL) out of a chat-completions message,
  * covering the response shapes the various image providers use.
@@ -259,13 +267,19 @@ export function extractImageFromMessage(message) {
                 return `data:image/png;base64,${part.image}`;
             }
         }
+        for (const part of message.content) {
+            if (part && part.type === 'text') {
+                const md = findMarkdownImage(part.text);
+                if (md) return md;
+            }
+        }
     }
 
     if (typeof message.content === 'string' && message.content.startsWith('data:image')) {
         return message.content;
     }
 
-    return null;
+    return findMarkdownImage(message.content);
 }
 
 /**
